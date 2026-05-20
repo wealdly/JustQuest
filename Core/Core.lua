@@ -327,8 +327,7 @@ end
 
 local function OnPlayerTargetChanged()
     local gossipEngine = JustQuest.Core.GetModule("GossipEngine")
-    local services = JustQuest.Core.GetModule("Services")
-    
+
     if gossipEngine and gossipEngine.OnTargetChanged then
         gossipEngine.OnTargetChanged()
     end

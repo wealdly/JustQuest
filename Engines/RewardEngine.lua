@@ -55,16 +55,23 @@ local REWARD_RETRY_DELAY = 0.25
 --- @return number  loadedCount  how many items have cached data
 local function AreRewardItemsCached(numChoices)
     local loadedCount = 0
+    local itemChoiceCount = 0
     for i = 1, numChoices do
-        local itemLink = GetQuestItemLink and GetQuestItemLink("choice", i)
-        if itemLink then
-            local name = GetItemInfo(itemLink)
-            if name then
-                loadedCount = loadedCount + 1
+        -- Currency choice slots have no item link; skip them for cache counting
+        local lootType = GetQuestItemInfoLootType and GetQuestItemInfoLootType("choice", i) or 0
+        if lootType == 0 then  -- LOOT_LIST_ITEM
+            itemChoiceCount = itemChoiceCount + 1
+            local itemLink = GetQuestItemLink and GetQuestItemLink("choice", i)
+            if itemLink then
+                local name = GetItemInfo(itemLink)
+                if name then
+                    loadedCount = loadedCount + 1
+                end
             end
         end
     end
-    return loadedCount == numChoices, loadedCount
+    if itemChoiceCount == 0 then return true, 0 end
+    return loadedCount == itemChoiceCount, loadedCount
 end
 
 --- Request item data for all reward choices so the client caches them.
@@ -185,7 +192,18 @@ end
 function RewardEngine.SelectReward(choiceIndex)
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
-    
+
+    -- Mirror Blizzard's own reward button: if the quest costs money, do not auto-confirm.
+    -- GetQuestReward would silently spend gold without the normal confirmation popup.
+    local moneyRequired = GetQuestMoneyToGet and GetQuestMoneyToGet() or 0
+    if moneyRequired > 0 then
+        if services and services.Debug then
+            services.Debug("Rewards", "Quest requires payment (" .. moneyRequired .. " copper) — halting for manual confirmation")
+        end
+        RewardEngine.HaltForManualSelection("expensive_quest_requires_payment")
+        return
+    end
+
     services.Debug("Rewards", "Selecting reward: " .. tostring(choiceIndex or "default"))
     
     services.SafeCallWithRetry(GetQuestReward, 3, choiceIndex)
@@ -223,20 +241,28 @@ end
 -- ============================================================
 
 function RewardEngine.AllRewardsTrivial(numChoices)
+    -- Trivial = all choices are low-quality non-equippable items with no special value.
+    -- Currency choices and any equippable gear (even uncommon/green) always go through
+    -- smart analysis: green gear can be a real upgrade in current-content leveling.
     local checkedCount = 0
     for i = 1, numChoices do
+        local lootType = GetQuestItemInfoLootType and GetQuestItemInfoLootType("choice", i) or 0
+        if lootType == 1 then return false end  -- currency choice is never trivial
+
         local itemLink = GetQuestItemLink and GetQuestItemLink("choice", i)
         if itemLink then
-            local _, _, quality = GetItemInfo(itemLink)
+            local _, _, quality, _, _, _, _, _, equipSlot = GetItemInfo(itemLink)
             if quality then
                 checkedCount = checkedCount + 1
+                if equipSlot and equipSlot ~= "" then
+                    return false  -- any equippable gear warrants smart analysis
+                end
                 if quality >= 3 then
-                    return false
+                    return false  -- rare+ non-equippable also warrants analysis
                 end
             end
         end
     end
-    -- If we couldn't check any items, assume NOT trivial (safe default)
     return checkedCount > 0
 end
 
@@ -285,25 +311,27 @@ function RewardEngine.AnalyzeRewardChoices(numChoices)
     if not gameData then return choices end
     
     for i = 1, numChoices do
-        local itemLink = GetQuestItemLink and GetQuestItemLink("choice", i)
-        if not itemLink then
+        local lootType = GetQuestItemInfoLootType and GetQuestItemInfoLootType("choice", i) or 0
+        if lootType == 1 then  -- LOOT_LIST_CURRENCY: no item link, handle as currency
+            local name = select(1, GetQuestItemInfo("choice", i)) or "Currency Reward"
             choices[i] = {
                 index = i,
                 itemLink = nil,
-                name = "Unknown",
-                quality = 0,
+                name = name,
+                quality = 1,
                 itemLevel = 0,
                 vendorPrice = 0,
                 equipSlot = "",
                 isEquippable = false,
+                isCurrency = true,
                 canUse = true
             }
         else
-            local choice = gameData.ExtractItemInfo(itemLink)
-            if not choice then
-                choice = {
+            local itemLink = GetQuestItemLink and GetQuestItemLink("choice", i)
+            if not itemLink then
+                choices[i] = {
                     index = i,
-                    itemLink = itemLink,
+                    itemLink = nil,
                     name = "Unknown",
                     quality = 0,
                     itemLevel = 0,
@@ -312,21 +340,36 @@ function RewardEngine.AnalyzeRewardChoices(numChoices)
                     isEquippable = false,
                     canUse = true
                 }
-            end
+            else
+                local choice = gameData.ExtractItemInfo(itemLink)
+                if not choice then
+                    choice = {
+                        index = i,
+                        itemLink = itemLink,
+                        name = "Unknown",
+                        quality = 0,
+                        itemLevel = 0,
+                        vendorPrice = 0,
+                        equipSlot = "",
+                        isEquippable = false,
+                        canUse = true
+                    }
+                end
 
-            if choice.isCollectible then
-                choice.isCollectibleKnown = gameData.IsCollectibleKnown and gameData.IsCollectibleKnown(choice)
-            end
+                if choice.isCollectible then
+                    choice.isCollectibleKnown = gameData.IsCollectibleKnown and gameData.IsCollectibleKnown(choice)
+                end
 
-            -- Lazy equipment comparison: only for Uncommon+ items
-            if choice.isEquippable and choice.quality and choice.quality >= 2 then
-                choice.upgradeInfo = RewardEngine.CompareWithEquipped(choice)
-            end
+                -- Lazy equipment comparison: only for Uncommon+ items
+                if choice.isEquippable and choice.quality and choice.quality >= 2 then
+                    choice.upgradeInfo = RewardEngine.CompareWithEquipped(choice)
+                end
 
-            choice.canUse = gameData.CanPlayerUseItem(itemLink)
-            choice.isSignificant = gameData.IsSignificantReward and gameData.IsSignificantReward(i) or false
-            choice.index = i
-            choices[i] = choice
+                choice.canUse = gameData.CanPlayerUseItem(itemLink)
+                choice.isSignificant = gameData.IsSignificantReward and gameData.IsSignificantReward(i) or false
+                choice.index = i
+                choices[i] = choice
+            end
         end
     end
     
@@ -337,23 +380,168 @@ end
 -- Equipment Comparison
 -- ============================================================
 
+-- Returns the spec index (1–4) that should drive Pawn scale selection.
+-- Honours the loot specialization override (right-click portrait → Loot Specialization):
+-- if the player has pinned a different spec for loot, we respect that preference so
+-- tank/healer loot scales are used even while playing a DPS spec.
+-- GetLootSpecialization() returns a global spec ID; Pawn stores the 1-4 index that
+-- GetSpecialization() returns, so we convert by probing GetSpecializationInfo(i).
+local function GetEffectiveSpecIndex()
+    local config = JustQuest.Core.GetModule("Config")
+    local useLootSpec = not config or config.Get("quest", "pawnUseLootSpec") ~= false
+    if useLootSpec then
+        local lootSpecID = GetLootSpecialization and GetLootSpecialization() or 0
+        if lootSpecID and lootSpecID > 0 then
+            -- WoW has at most 4 specs per class; iterate until we find the matching index.
+            for i = 1, 4 do
+                local id = GetSpecializationInfo and GetSpecializationInfo(i)
+                if not id then break end
+                if id == lootSpecID then return i end
+            end
+        end
+    end
+    -- Loot spec disabled, = 0 ("Current Specialization"), or conversion failed: use active spec.
+    return GetSpecialization and GetSpecialization() or nil
+end
+
+-- Returns { isUpgrade=bool, pawnPercentUpgrade=number } when Pawn can give a definitive
+-- result for the player's CURRENT spec, or nil to signal "fall back to ilvl comparison".
+--
+-- Scale selection priority:
+--   1. Scales tagged to the player's current class+spec (Scale.ClassID + Scale.SpecID match)
+--   2. Scales tagged to the player's class only (Scale.ClassID matches, no SpecID)
+--   3. Untagged/generic user scales (no ClassID)
+--
+-- Scales for other classes or other specs are ignored entirely so a Holy Paladin
+-- scale does not influence a Retribution Paladin's reward pick.
+local function GetPawnUpgradeForCurrentSpec(itemLink)
+    if not (PawnGetItemData and PawnIsItemAnUpgrade and PawnIsScaleVisible
+            and PawnCommon and PawnCommon.Scales) then
+        return nil
+    end
+
+    -- Respect the user's option to disable Pawn scoring.
+    local config = JustQuest.Core.GetModule("Config")
+    if config and config.Get("quest", "usePawnScoring") == false then
+        return nil
+    end
+
+    local pawnData = PawnGetItemData(itemLink)
+    if not pawnData then return nil end  -- item not in WoW/Pawn cache yet
+
+    local upgradeTable, _, bestItemTable, secondBestTable = PawnIsItemAnUpgrade(pawnData)
+
+    -- Player identity for scale filtering (loot spec overrides active spec)
+    local _, _, playerClassID = UnitClass("player")
+    local playerSpecIndex    = GetEffectiveSpecIndex()
+
+    -- Classify each visible scale into one of three buckets:
+    --   specScales   — tagged to this class AND this spec (highest priority)
+    --   classScales  — tagged to this class, no spec restriction
+    --   genericScales — no class/spec tag (user-created)
+    -- Scales for a different class or a different spec of this class are skipped.
+    local specScales    = {}
+    local classScales   = {}
+    local genericScales = {}
+
+    for scaleName, scale in pairs(PawnCommon.Scales) do
+        if PawnIsScaleVisible(scaleName) then
+            if scale.ClassID ~= nil then
+                if scale.ClassID == playerClassID then
+                    if scale.SpecID ~= nil then
+                        if scale.SpecID == playerSpecIndex then
+                            specScales[scaleName] = true
+                        end
+                        -- else: same class, different spec — skip
+                    else
+                        classScales[scaleName] = true
+                    end
+                end
+                -- else: different class — skip
+            else
+                genericScales[scaleName] = true
+            end
+        end
+    end
+
+    -- Pick the tightest matching set that has at least one scale
+    local relevant
+    if next(specScales)  then relevant = specScales
+    elseif next(classScales) then relevant = classScales
+    else relevant = genericScales
+    end
+    if not next(relevant) then return nil end  -- no applicable scales at all
+
+    -- Walk the three result tables Pawn returned and collect hits from relevant scales
+    local isUpgrade        = false
+    local pawnPercentUpgrade = 0
+    local hadResult        = false
+
+    if upgradeTable then
+        for _, entry in ipairs(upgradeTable) do
+            if relevant[entry.ScaleName] then
+                hadResult  = true
+                isUpgrade  = true
+                local pct  = entry.PercentUpgrade or 0
+                if pct > pawnPercentUpgrade then
+                    pawnPercentUpgrade = pct
+                end
+            end
+        end
+    end
+
+    -- bestItemTable / secondBestTable mean "this scale ran and the item is NOT an upgrade".
+    -- Use separate blocks, not ipairs{}, to avoid ipairs stopping at the first nil entry.
+    if bestItemTable then
+        for scaleName in pairs(bestItemTable) do
+            if relevant[scaleName] then
+                hadResult = true
+                -- isUpgrade intentionally stays false unless upgradeTable already set it
+            end
+        end
+    end
+    if secondBestTable then
+        for scaleName in pairs(secondBestTable) do
+            if relevant[scaleName] then
+                hadResult = true
+            end
+        end
+    end
+
+    if not hadResult then return nil end  -- relevant scales didn't produce any result
+
+    return { isUpgrade = isUpgrade, pawnPercentUpgrade = pawnPercentUpgrade }
+end
+
 function RewardEngine.CompareWithEquipped(rewardInfo)
     if not rewardInfo or not rewardInfo.isEquippable then
-        return {
-            isUpgrade = false,
-            reason = "not_equippable"
-        }
+        return { isUpgrade = false, reason = "not_equippable" }
     end
-    
+
     local gameData = GetGameData()
     if not gameData then
         return { isUpgrade = false, reason = "no_gamedata" }
     end
-    
-    local currentLevel = gameData.GetCurrentEquippedLevel(rewardInfo.equipSlot)
+
     local rewardLevel = rewardInfo.itemLevel or 0
-    
-    -- Empty slot
+
+    -- Pawn: spec-aware stat-weight scoring (falls back to ilvl when Pawn is absent,
+    -- item not yet cached, or no relevant scales are configured for the active spec).
+    if rewardInfo.itemLink then
+        local pawnResult = GetPawnUpgradeForCurrentSpec(rewardInfo.itemLink)
+        if pawnResult then
+            return {
+                isUpgrade          = pawnResult.isUpgrade,
+                reason             = pawnResult.isUpgrade and "pawn_upgrade" or "pawn_not_upgrade",
+                pawnPercentUpgrade = pawnResult.pawnPercentUpgrade,
+                rewardLevel        = rewardLevel,
+            }
+        end
+    end
+
+    -- ilvl fallback: slot-specific comparison using GetDetailedItemLevelInfo on both sides.
+    local currentLevel = gameData.GetCurrentEquippedLevel(rewardInfo.equipSlot)
+
     if currentLevel == 0 then
         return {
             isUpgrade = true,
@@ -362,8 +550,7 @@ function RewardEngine.CompareWithEquipped(rewardInfo)
             rewardLevel = rewardLevel
         }
     end
-    
-    -- Level comparison with buffer
+
     local buffer = JustQuest.Constants.LIMITS.ITEM_LEVEL_BUFFER
     if rewardLevel >= (currentLevel - buffer) then
         return {
@@ -374,7 +561,7 @@ function RewardEngine.CompareWithEquipped(rewardInfo)
             difference = rewardLevel - currentLevel
         }
     end
-    
+
     return {
         isUpgrade = false,
         reason = "downgrade",
@@ -438,19 +625,40 @@ function RewardEngine.SelectSmartChoice(choices)
     
     -- PRIORITY 3: Item level upgrades (for leveling characters)
     if #upgrades > 0 then
+        -- Rank by Pawn PercentUpgrade when available, otherwise by ilvl delta.
+        -- All choices in a single reward set will have used the same path (Pawn or ilvl)
+        -- so mixing the two scoring modes per-choice is not expected.
+        local function upgradeScore(choice)
+            local info = choice.upgradeInfo
+            if info.pawnPercentUpgrade and info.pawnPercentUpgrade > 0 then
+                return info.pawnPercentUpgrade
+            end
+            return (info.difference or 0) * 0.001  -- normalise ilvl delta to same scale as Pawn %
+        end
+
         local bestUpgrade = upgrades[1]
-        local bestDiff = bestUpgrade.upgradeInfo.difference or 0
-        
+        local bestScore = upgradeScore(bestUpgrade)
         for i = 2, #upgrades do
-            local diff = upgrades[i].upgradeInfo.difference or 0
-            if diff > bestDiff then
+            local score = upgradeScore(upgrades[i])
+            if score > bestScore then
                 bestUpgrade = upgrades[i]
-                bestDiff = diff
+                bestScore = score
             end
         end
-        
-        services.Debug("Rewards", string.format("PRIORITY: Upgrade - %s (+%d ilvl)", 
-            bestUpgrade.name, bestDiff))
+
+        local info = bestUpgrade.upgradeInfo
+        if info.pawnPercentUpgrade and info.pawnPercentUpgrade > 0 then
+            -- PawnBigUpgradeThreshold = 100 is a sentinel for "no baseline / empty slot" (= 10000%).
+            -- Display it as a plain "big upgrade" rather than a nonsense percentage.
+            local pctDisplay = info.pawnPercentUpgrade >= 99
+                and "big upgrade (no baseline)"
+                or string.format("%.0f%% better by stat weight", info.pawnPercentUpgrade * 100)
+            services.Debug("Rewards", string.format("PRIORITY: Pawn upgrade - %s (%s)",
+                bestUpgrade.name, pctDisplay))
+        else
+            services.Debug("Rewards", string.format("PRIORITY: Upgrade - %s (+%d ilvl)",
+                bestUpgrade.name, info.difference or 0))
+        end
         return bestUpgrade.index
     end
     

@@ -11,8 +11,6 @@ local Config = {}
 local database = {}
 local debugMode = false
 local dbObj = nil
-local db
-local defaults
 
 -- ============================================================
 -- Utilities
@@ -265,6 +263,41 @@ function Config.GetQuestBlacklist()
 end
 
 -- ============================================================
+-- Currency Quest Whitelist Management
+-- ============================================================
+
+function Config.AddCurrencyQuestWhitelist(questID, questTitle, currencyText)
+    if not questID or type(questID) ~= "number" then return end
+
+    local whitelist = Config.Get("quest", "currencyQuestWhitelist") or {}
+    if whitelist[questID] then return end
+
+    whitelist[questID] = {
+        title = questTitle or "Unknown Quest",
+        currencies = currencyText or "",
+    }
+    Config.Set("quest", "currencyQuestWhitelist", whitelist)
+
+    Debug("Added quest to currency whitelist: " .. questID)
+end
+
+function Config.RemoveCurrencyQuestWhitelist(questID)
+    if not questID or type(questID) ~= "number" then return end
+
+    local whitelist = Config.Get("quest", "currencyQuestWhitelist") or {}
+    if not whitelist[questID] then return end
+
+    whitelist[questID] = nil
+    Config.Set("quest", "currencyQuestWhitelist", whitelist)
+
+    Debug("Removed quest from currency whitelist: " .. questID)
+end
+
+function Config.GetCurrencyQuestWhitelist()
+    return Config.Get("quest", "currencyQuestWhitelist") or {}
+end
+
+-- ============================================================
 -- Container Whitelist/Blacklist Management
 -- ============================================================
 
@@ -505,15 +538,22 @@ end
 local function HandleSlashCommand(msg)
     local cmd, rest = strsplit(" ", msg, 2)
     cmd = cmd and cmd:lower() or ""
-    
-    -- Help / No command
-    if cmd == "" or cmd == "help" then
+
+    -- Match JustAC behavior: no argument opens options panel
+    if cmd == "" then
+        Config.ShowConfig()
+        return
+    end
+
+    if cmd == "help" then
         print("|cff00ccff========== JustQuest ==========|r")
         print("|cffffcc00Commands:|r")
+        print("  |cff00ff00/jq|r - Open options panel")
+        print("  |cff00ff00/jq help|r - Show this help")
         print("  |cff00ff00/jq toggle|r - Enable/disable addon")
         print("  |cff00ff00/jq config|r - Open settings panel")
         print("  |cff00ff00/jq status|r - Show current status")
-        print("  |cff00ff00/jq debug <on|off>|r - Toggle debug logging")
+        print("  |cff00ff00/jq debug [on|off]|r - Toggle debug logging")
         print("")
         print("|cffffcc00Container Management:|r")
         print("  |cff00ff00Shift-Click|r in config UI - Add container to whitelist (easiest!)")
@@ -579,6 +619,14 @@ local function HandleSlashCommand(msg)
     
     -- Debug toggle
     if cmd == "debug" then
+        if not rest or rest == "" then
+            local current = Config.Get(nil, "debugMode")
+            local newValue = not current
+            Config.Set(nil, "debugMode", newValue)
+            print("|cff00ccffJustQuest:|r Debug logging " .. (newValue and "|cff00ff00enabled|r" or "|cffff6666disabled|r"))
+            return
+        end
+
         if rest then
             local mode = rest:lower()
             if mode == "on" or mode == "1" or mode == "true" or mode == "enable" then
@@ -591,10 +639,6 @@ local function HandleSlashCommand(msg)
             else
                 print("|cffff6666Usage:|r /jq debug <on|off>")
             end
-        else
-            local current = Config.Get(nil, "debugMode")
-            print("|cff00ccffJustQuest:|r Debug logging is " .. (current and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
-            print("|cff888888Usage:|r /jq debug <on|off>")
         end
         return
     end
@@ -758,7 +802,7 @@ end
 -- ============================================================
 
 function Config.Initialize()
-    local defaults = GetDefaults()
+    local defaultConfig = GetDefaults()
 
     -- Prefer AceDB for robust profile handling
     if LibStub then
@@ -769,7 +813,7 @@ function Config.Initialize()
             end)
             if ok and res then
                 dbObj = res
-                database.profile = dbObj.profile or (defaults.profile or {})
+                database.profile = dbObj.profile or (defaultConfig.profile or {})
             end
         end
     end
@@ -779,7 +823,7 @@ function Config.Initialize()
         if JustQuestDB and JustQuestDB.profile then
             database.profile = JustQuestDB.profile
         else
-            database.profile = defaults.profile or {}
+            database.profile = defaultConfig.profile or {}
         end
     end
 
@@ -819,7 +863,7 @@ function Config.Initialize()
         database.profile.gossip = {
             enabled = true,
             whitelist = {},
-            blacklist = defaults.profile.gossip and defaults.profile.gossip.blacklist or {}
+            blacklist = defaultConfig.profile.gossip and defaultConfig.profile.gossip.blacklist or {}
         }
     end
     
@@ -837,7 +881,7 @@ function Config.Initialize()
     end
     
     if not database.profile.advanced then
-		database.profile.advanced = defaults.profile.advanced or {}
+        database.profile.advanced = defaultConfig.profile.advanced or {}
 	end
 end
 

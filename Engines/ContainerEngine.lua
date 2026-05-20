@@ -452,7 +452,7 @@ function ContainerEngine.OpenBagContainers()
         return 
     end
     
-    local canAutomate, reason = services.ValidateAutomationPreconditions()
+    local canAutomate = services.ValidateAutomationPreconditions()
     if not canAutomate then 
         return 
     end
@@ -548,9 +548,6 @@ function ContainerEngine.OpenBagContainers()
         -- result == false means continue to next item
     end
     
-    if openedAny or skippedLocked > 0 or skippedRetry > 0 then
-        -- Scan completed with results
-    end
 end
 
 -- ============================================================

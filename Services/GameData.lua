@@ -35,19 +35,21 @@ local QUEST_TYPE_CHECKERS = {
     
     weekly = function(questID)
         if not (C_QuestLog and C_QuestLog.GetLogIndexForQuestID) then
-            return false
+            -- No log API — use IsRepeatableQuest as broad fallback
+            return C_QuestLog and C_QuestLog.IsRepeatableQuest and C_QuestLog.IsRepeatableQuest(questID) or false
         end
-        
+
         local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
         if not logIndex then
-            return false
+            -- Quest not yet in log (pre-accept): IsRepeatableQuest covers daily/weekly/repeatable.
+            -- Daily quests return false from the daily checker above, so weekly serves as the
+            -- catch-all repeatable gate for quests not yet accepted.
+            return C_QuestLog.IsRepeatableQuest and C_QuestLog.IsRepeatableQuest(questID) or false
         end
-        
+
         local questInfo = C_QuestLog.GetInfo and C_QuestLog.GetInfo(logIndex)
-        if not questInfo then
-            return false
-        end
-        
+        if not questInfo then return false end
+
         local services = JustQuest.Core.GetModule("Services")
         local weeklyFreq = services and services.GetEnumValue("QuestFrequency", "Weekly")
         return weeklyFreq and questInfo.frequency == weeklyFreq
@@ -56,17 +58,20 @@ local QUEST_TYPE_CHECKERS = {
     pvp = function(questID)
         local success, tagInfo = pcall(C_QuestLog.GetQuestTagInfo, questID)
         if success and tagInfo then
-            return tagInfo.tagID == JustQuest.Constants.QUEST_TAGS.PVP
+            if tagInfo.tagID == JustQuest.Constants.QUEST_TAGS.PVP then
+                return true
+            end
+            -- World PVP quests use worldQuestType instead of tagID
+            if tagInfo.worldQuestType == JustQuest.Constants.QUEST_TAGS.PVP_WORLD_TYPE then
+                return true
+            end
         end
         return false
     end,
     
     escort = function(questID)
-        local success, tagInfo = pcall(C_QuestLog.GetQuestTagInfo, questID)
-        if success and tagInfo then
-            -- Escort tag ID 85 is also used for escort quests
-            return tagInfo.tagID == JustQuest.Constants.QUEST_TAGS.ESCORT or tagInfo.tagID == 85
-        end
+        -- No reliable API to identify escort quests in modern WoW.
+        -- QuestTag 85 = Heroic (not Escort) — matching it would block heroic dungeon quests.
         return false
     end,
     
@@ -80,15 +85,21 @@ local QUEST_TYPE_CHECKERS = {
     end,
 }
 
+-- Ordered priority: most-specific type first.
+-- pvp before world so a PVP world quest gates on acceptPvP, not acceptRepeatable.
+-- daily before weekly; weekly's pre-accept fallback (IsRepeatableQuest) catches both.
+local QUEST_TYPE_CHECK_ORDER = { "pvp", "profession", "escort", "world", "daily", "weekly" }
+
 function GameData.GetQuestType(questID)
     if not questID then return "normal" end
-    
-    for typeName, checkFunc in pairs(QUEST_TYPE_CHECKERS) do
-        if checkFunc(questID) then
+
+    for _, typeName in ipairs(QUEST_TYPE_CHECK_ORDER) do
+        local checkFunc = QUEST_TYPE_CHECKERS[typeName]
+        if checkFunc and checkFunc(questID) then
             return typeName
         end
     end
-    
+
     return "normal"
 end
 
@@ -114,37 +125,41 @@ function GameData.ExtractItemInfo(itemLink)
     end
     
     local services = JustQuest.Core.GetModule("Services")
-    local name, _, quality, itemLevel, reqLevel, itemType, itemSubType, _, equipSlot, _, vendorPrice = 
-        itemInfo[1], itemInfo[2], itemInfo[3], itemInfo[4], itemInfo[5], 
-        itemInfo[6], itemInfo[7], itemInfo[8], itemInfo[9], itemInfo[10], itemInfo[11]
-    
+    local name, _, quality, itemLevel, reqLevel, _, _, _, equipSlot, _, vendorPrice, classID, subclassID =
+        itemInfo[1], itemInfo[2], itemInfo[3], itemInfo[4], itemInfo[5],
+        itemInfo[6], itemInfo[7], itemInfo[8], itemInfo[9], itemInfo[10], itemInfo[11],
+        itemInfo[12], itemInfo[13]
+
     local itemID = services and services.GetItemIDFromLink(itemLink)
-    
+
     -- Fallback if vendorPrice not available from GetItemInfo
     if not vendorPrice and itemID then
         vendorPrice = GameData.GetVendorPrice(itemID)
     end
-    
-    -- Detect collectible types
-    local isMount = itemType and itemType == "Mount" or (itemSubType and itemSubType == "Mount")
-    local isPet = itemType and itemType == "Battle Pets" or (itemSubType and itemSubType:find("Pet"))
-    local isToy = false
-    
-    -- Check if item is a toy
+
+    -- Use effective item level from the link (accounts for bonus IDs on scaled quest rewards)
+    local effectiveItemLevel = (C_Item and C_Item.GetDetailedItemLevelInfo and
+        C_Item.GetDetailedItemLevelInfo(itemLink)) or itemLevel
+
+    -- Detect collectible types using stable enum IDs (locale-independent)
+    local IC  = JustQuest.Constants.ITEM_CLASS
+    local IMS = JustQuest.Constants.ITEM_MISC_SUBCLASS
+    local isMount = classID == IC.MISCELLANEOUS and subclassID == IMS.MOUNT
+    local isPet   = classID == IC.BATTLEPET or
+                    (classID == IC.MISCELLANEOUS and subclassID == IMS.COMPANION_PET)
+    local isToy   = false
+
     if itemID and C_ToyBox and C_ToyBox.GetToyInfo then
-        local toyInfo = C_ToyBox.GetToyInfo(itemID)
-        isToy = toyInfo ~= nil
+        isToy = C_ToyBox.GetToyInfo(itemID) ~= nil
     end
-    
+
     return {
         itemLink = itemLink,
         itemID = itemID,
         name = name,
         quality = quality,
-        itemLevel = itemLevel,
+        itemLevel = effectiveItemLevel,
         requiredLevel = reqLevel,
-        itemType = itemType,
-        itemSubType = itemSubType,
         equipSlot = equipSlot,
         isEquippable = equipSlot and equipSlot ~= "",
         vendorPrice = vendorPrice or 0,
@@ -157,15 +172,11 @@ end
 
 function GameData.GetEquippedItemLevel(slotID)
     local itemLink = GetInventoryItemLink("player", slotID)
-    if not itemLink then 
-        return 0 
+    if not itemLink then
+        return 0
     end
-    
-    local location = ItemLocation:CreateFromEquipmentSlot(slotID)
-    if location and location:IsValid() then
-        return C_Item.GetCurrentItemLevel(location) or 0
-    end
-    return 0
+    return (C_Item and C_Item.GetDetailedItemLevelInfo and
+        C_Item.GetDetailedItemLevelInfo(itemLink)) or 0
 end
 
 function GameData.GetCurrentEquippedLevel(equipSlot)
@@ -256,13 +267,23 @@ function GameData.IsSignificantReward(choiceIndex)
         return false 
     end
     
-    -- BoE items with significant ilvl — may have auction value, needs manual decision
-    if bindType == JustQuest.Constants.BIND_TYPES.EQUIP and itemLevel and itemLevel >= 60 then
-        local services = JustQuest.Core.GetModule("Services")
-        if services then
-            services.Debug("Rewards", string.format("Significant reward: %s (BoE ilvl %d - auction value)", name, itemLevel))
+    -- BoE items at or above the player's current equipped ilvl may have auction value.
+    -- Use a player-relative threshold so it does not over-halt on low-level BoEs.
+    if bindType == JustQuest.Constants.BIND_TYPES.EQUIP then
+        local playerEquippedIlvl = 0
+        if GetAverageItemLevel then
+            local _, equipped = GetAverageItemLevel()
+            playerEquippedIlvl = equipped or 0
         end
-        return true, string.format("BoE item with auction value: %s", name)
+        if itemLevel and playerEquippedIlvl > 0 and itemLevel >= playerEquippedIlvl then
+            local services = JustQuest.Core.GetModule("Services")
+            if services then
+                services.Debug("Rewards", string.format(
+                    "Significant reward: %s (BoE ilvl %d >= equipped avg %d)",
+                    name, itemLevel, playerEquippedIlvl))
+            end
+            return true, string.format("BoE item with auction value: %s", name)
+        end
     end
     
     -- Legendary/Artifact quality — always manual review

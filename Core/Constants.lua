@@ -8,8 +8,9 @@ JustQuest.Constants = {}
 -- ============================================================
 
 JustQuest.Constants.QUEST_TAGS = {
-    PVP = 41,
-    ESCORT = 85,
+    PVP = 41,           -- Enum.QuestTag.PvP: static PVP quests (battleground, honor, etc.)
+    PVP_WORLD_TYPE = 3, -- Enum.QuestTagType.PvP: PVP world quest type (worldQuestType field)
+    HEROIC = 85,        -- Enum.QuestTag.Heroic: formerly misnamed ESCORT; 85 is Heroic, not Escort
 }
 
 JustQuest.Constants.EQUIPMENT_SLOTS = {
@@ -26,7 +27,7 @@ JustQuest.Constants.EQUIPMENT_SLOTS = {
     INVTYPE_FINGER = {11, 12}, 
     INVTYPE_TRINKET = {13, 14}, 
     INVTYPE_CLOAK = 15,
-    INVTYPE_WEAPON = 16, 
+    INVTYPE_WEAPON = {16, 17},  -- 1H weapon fits mainhand OR offhand; compare against weaker
     INVTYPE_2HWEAPON = 16, 
     INVTYPE_WEAPONMAINHAND = 16,
     INVTYPE_WEAPONOFFHAND = 17, 
@@ -42,6 +43,25 @@ JustQuest.Constants.BIND_TYPES = {
     EQUIP = 2,   -- BoE — has auction house value
     USE = 3,
     QUEST = 4,
+}
+
+-- Enum.ItemClass values (locale-independent, from ItemConstantsDocumentation)
+JustQuest.Constants.ITEM_CLASS = {
+    CONSUMABLE    = 0,
+    CONTAINER     = 1,
+    WEAPON        = 2,
+    ARMOR         = 4,
+    QUESTITEM     = 12,
+    MISCELLANEOUS = 15,
+    BATTLEPET     = 17,
+}
+
+-- Enum.ItemMiscellaneousSubclass values
+JustQuest.Constants.ITEM_MISC_SUBCLASS = {
+    JUNK            = 0,
+    COMPANION_PET   = 2,
+    MOUNT           = 5,
+    MOUNT_EQUIPMENT = 6,
 }
 
 -- ============================================================
@@ -84,7 +104,7 @@ JustQuest.Constants.TIMING = {
 JustQuest.Constants.LIMITS = {
     CHAIN_DEPTH = 10,
     MAX_RETRIES = 2,
-    ITEM_LEVEL_BUFFER = 5,
+    ITEM_LEVEL_BUFFER = 0,  -- reward must meet or exceed equipped ilvl to count as upgrade
     CONTAINER_MAX_RETRIES = 3,
 }
 
@@ -108,6 +128,9 @@ JustQuest.Constants.DEFAULTS = {
             acceptTrivial = true,
             autoReward = false,
             simpleRewardMode = false,
+            usePawnScoring = true,   -- use Pawn stat-weight scoring when Pawn is installed
+            pawnUseLootSpec = true,  -- follow Loot Specialization setting for Pawn scale selection
+            currencyQuestWhitelist = {},  -- quests allowed to auto-spend currencies
             acceptAccountCompleted = true,
             acceptQuestItems = true,
             blockedQuests = {},
@@ -148,6 +171,13 @@ JustQuest.Constants.DEFAULTS = {
             useDatabaseFallback = false,
             whitelist = {},
             blacklist = {},
+        },
+
+        lfgQuickExit = {
+            buttonX = 280,
+            buttonY = -120,
+            positionInitialized = false,
+            resetInstanceOnExit = false,
         },
         
         -- Auto-generated from TIMING table
@@ -226,8 +256,7 @@ JustQuest.Constants.EVENTS = {
     PLAYER_TARGET_CHANGED = "PLAYER_TARGET_CHANGED",
     
 	CINEMATIC_START = "CINEMATIC_START",
-	PLAY_MOVIE = "PLAY_MOVIE",
-	QUEST_REMOVED = "QUEST_REMOVED"
+    PLAY_MOVIE = "PLAY_MOVIE"
 }
 
 JustQuest.Constants.BYPASS_SAFETY_EVENTS = {
@@ -246,10 +275,3 @@ JustQuest.Constants.BYPASS_SAFETY_EVENTS = {
 	[JustQuest.Constants.EVENTS.MODIFIER_STATE_CHANGED] = true,
 	[JustQuest.Constants.EVENTS.PLAYER_TARGET_CHANGED] = true,
 }
-
-JustQuest.Constants.SPECIAL_EVENTS = {
-	[JustQuest.Constants.EVENTS.GOSSIP_SHOW] = true,
-	[JustQuest.Constants.EVENTS.QUEST_GREETING] = true
-}
-
-

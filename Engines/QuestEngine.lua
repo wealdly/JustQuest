@@ -5,6 +5,10 @@ local ADDON_NAME, JustQuest = ...
 local QuestEngine = {}
 JustQuest._stats = JustQuest._stats or {}
 
+-- Hot path locals
+local GetTime = GetTime
+local pcall = pcall
+
 -- TTL guard prevents race-condition re-entry after failed accepts
 local lastResetTime = 0
 local recentAcceptAttempts = {}
@@ -44,6 +48,73 @@ local function GetGameData()
     end
     return moduleCache.GameData
 end
+
+-- ============================================================
+-- Currency Confirmation Popup
+-- ============================================================
+-- Registered at load time (StaticPopup requires top-level registration).
+-- Shows when a quest requires currency consumption and the quest is not whitelisted.
+-- Repeatable quests: 3-button (Spend Once / Cancel / Always Allow)
+-- Non-repeatable quests: 2-button (Spend / Cancel) — whitelisting never makes sense
+
+local function CurrencyPopup_Spend(data)
+    local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
+    local services = JustQuest.Core.GetModule("Services")
+    if safetyEngine then safetyEngine.SetState("BUSY", "completing_quest") end
+    if services then services.SafeCallWithRetry(CompleteQuest, 3) end
+end
+
+local function CurrencyPopup_Cancel()
+    local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
+    if safetyEngine then safetyEngine.EndProcessing("user_cancelled_currency_spend") end
+end
+
+local function CurrencyPopup_Hide()
+    -- Safety net: if closed via Escape without choosing, release BUSY state
+    local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
+    if safetyEngine and safetyEngine.GetState() == "BUSY"
+                   and safetyEngine.GetReason() == "waiting_currency_prompt" then
+        safetyEngine.EndProcessing("currency_prompt_dismissed")
+    end
+end
+
+-- 3-button variant: shown for repeatable quests (daily/weekly/general repeatable)
+StaticPopupDialogs["JUSTQUEST_CONFIRM_CURRENCY"] = {
+    text = "Quest: |cffffd100%s|r\n\nRequires:\n%s\n\nAllow JustQuest to spend this?",
+    button1 = "Spend Once",
+    button2 = "Cancel",
+    button3 = "Always Allow",
+    OnAccept = function(self, data) CurrencyPopup_Spend(data) end,
+    OnAlt = function(self, data)
+        if data and data.questID then
+            local config = JustQuest.Core.GetModule("Config")
+            if config and config.AddCurrencyQuestWhitelist then
+                config.AddCurrencyQuestWhitelist(data.questID, data.questTitle, data.currencyText)
+            end
+        end
+        CurrencyPopup_Spend(data)
+    end,
+    OnCancel = function(self, data) CurrencyPopup_Cancel() end,
+    OnHide = function(self) CurrencyPopup_Hide() end,
+    timeout = 0,
+    whileDead = false,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- 2-button variant: shown for non-repeatable quests (no whitelist option)
+StaticPopupDialogs["JUSTQUEST_CONFIRM_CURRENCY_ONCE"] = {
+    text = "Quest: |cffffd100%s|r\n\nRequires:\n%s\n\nAllow JustQuest to spend this?",
+    button1 = "Spend",
+    button2 = "Cancel",
+    OnAccept = function(self, data) CurrencyPopup_Spend(data) end,
+    OnCancel = function(self, data) CurrencyPopup_Cancel() end,
+    OnHide = function(self) CurrencyPopup_Hide() end,
+    timeout = 0,
+    whileDead = false,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
 
 -- ============================================================
 -- Quest Visibility Filters (with blacklist integration)
@@ -186,19 +257,28 @@ local function ProcessActiveQuests()
     
     -- Sort only visible quests by priority (skip sort for single quest)
     if #visible > 1 then
+        -- Precompute account-completion status to avoid O(n log n) pcalls
+        -- inside the sort comparator. Also fixes the original bug where only
+        -- the pcall success bool was captured instead of the actual result.
+        local familiarStatus = {}
+        if C_QuestLog and C_QuestLog.IsQuestFlaggedCompletedOnAccount then
+            for _, quest in ipairs(visible) do
+                local ok, isFamiliar = pcall(C_QuestLog.IsQuestFlaggedCompletedOnAccount, quest.questID)
+                familiarStatus[quest.questID] = ok and isFamiliar or false
+            end
+        end
+
         table.sort(visible, function(a, b)
             -- Important/legendary/campaign quests first
             local aImportant = a.isImportant or a.isLegendary or a.isMeta
             local bImportant = b.isImportant or b.isLegendary or b.isMeta
             if aImportant ~= bImportant then return aImportant end
-            
+
             -- Account-familiar repeatables first for faster turn-ins
-            if C_QuestLog and C_QuestLog.IsQuestFlaggedCompletedOnAccount then
-                local aFamiliar = pcall(C_QuestLog.IsQuestFlaggedCompletedOnAccount, a.questID)
-                local bFamiliar = pcall(C_QuestLog.IsQuestFlaggedCompletedOnAccount, b.questID)
-                if aFamiliar ~= bFamiliar then return aFamiliar end
-            end
-            
+            local aFamiliar = familiarStatus[a.questID]
+            local bFamiliar = familiarStatus[b.questID]
+            if aFamiliar ~= bFamiliar then return aFamiliar end
+
             return false
         end)
     end
@@ -720,6 +800,97 @@ function QuestEngine.OnQuestProgress()
     end
     
     if isComplete then 
+        -- Guard: required currencies — check whitelist, then prompt if not already allowed.
+        -- Currencies (Flightstones, Resonance Crystals, Honor, etc.) are consumed by CompleteQuest().
+        local numCurrencies = GetNumQuestCurrencies and GetNumQuestCurrencies() or 0
+        if numCurrencies > 0 then
+            -- questID already resolved above; nil means we cannot whitelist — halt safely
+            if not questID then
+                if services.Debug then
+                    services.Debug("Quest", "Quest requires currencies but questID is nil — halting for manual confirmation")
+                end
+                if services.OutputHalt then services.OutputHalt("quest_requires_currency") end
+                if safetyEngine then safetyEngine.EndProcessing("quest_requires_currency") end
+                return
+            end
+
+            local config = GetConfig()
+            local whitelist = config and config.GetCurrencyQuestWhitelist and config.GetCurrencyQuestWhitelist() or {}
+
+            if not whitelist[questID] then
+                -- Build the currency list for the popup
+                local currencyLines = {}
+                for i = 1, numCurrencies do
+                    local ok, info = pcall(function()
+                        return C_QuestOffer and C_QuestOffer.GetQuestRequiredCurrencyInfo
+                               and C_QuestOffer.GetQuestRequiredCurrencyInfo(i)
+                    end)
+                    if ok and info then
+                        tinsert(currencyLines, string.format("  %dx %s", info.requiredAmount or 1, info.name or "?"))
+                    end
+                end
+                local currencyText = #currencyLines > 0 and table.concat(currencyLines, "\n") or "Unknown currencies"
+                local questTitle = GetTitleText and GetTitleText() or "Unknown Quest"
+
+                if services.Debug then
+                    services.Debug("Quest", "Quest requires currencies — showing confirmation prompt")
+                end
+                if not safetyEngine then
+                    if services.OutputHalt then services.OutputHalt("quest_requires_currency") end
+                    return
+                end
+                local isRepeatable = C_QuestLog and C_QuestLog.IsRepeatableQuest
+                                     and C_QuestLog.IsRepeatableQuest(questID)
+                local dialogKey = isRepeatable and "JUSTQUEST_CONFIRM_CURRENCY"
+                                               or "JUSTQUEST_CONFIRM_CURRENCY_ONCE"
+                safetyEngine.SetState("BUSY", "waiting_currency_prompt")
+                StaticPopup_Show(dialogKey, questTitle, currencyText, {
+                    questID = questID,
+                    questTitle = questTitle,
+                    currencyText = currencyText,
+                })
+                return
+            end
+
+            -- Whitelisted: fall through to CompleteQuest below
+            if services.Debug then
+                services.Debug("Quest", "Quest " .. tostring(questID) .. " is currency-whitelisted — proceeding")
+            end
+        end
+
+        -- Guard: required items — halt unless ALL are quest-class items (classID 12).
+        -- Quest items (pelts, vials, stolen plans) are expected consumables.
+        -- Trade materials, crafted items, or uncached items are not safe to auto-consume.
+        local numItems = GetNumQuestItems and GetNumQuestItems() or 0
+        if numItems > 0 then
+            local IC = JustQuest.Constants.ITEM_CLASS
+            for i = 1, numItems do
+                local hidden = IsQuestItemHidden and IsQuestItemHidden(i) or 0
+                if hidden == 0 then  -- only inspect visible required items
+                    local itemLink = GetQuestItemLink and GetQuestItemLink("required", i)
+                    if itemLink then
+                        local classID = select(12, GetItemInfo(itemLink))
+                        if classID == nil or classID ~= IC.QUESTITEM then
+                            if services.Debug then
+                                services.Debug("Quest", "Quest requires non-quest item (classID=" .. tostring(classID) .. ") — halting for manual confirmation")
+                            end
+                            if services.OutputHalt then services.OutputHalt("quest_requires_trade_items") end
+                            if safetyEngine then safetyEngine.EndProcessing("quest_requires_trade_items") end
+                            return
+                        end
+                    else
+                        -- Item link not in client cache; cannot verify — halt to be safe.
+                        if services.Debug then
+                            services.Debug("Quest", "Required item link not cached — halting for manual confirmation")
+                        end
+                        if services.OutputHalt then services.OutputHalt("quest_requires_uncached_items") end
+                        if safetyEngine then safetyEngine.EndProcessing("quest_requires_uncached_items") end
+                        return
+                    end
+                end
+            end
+        end
+
         -- Ensure BUSY state before calling CompleteQuest.
         -- Prevents repumps/DispatchContent from starting new processing mid-turn-in.
         if safetyEngine then

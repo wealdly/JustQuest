@@ -4,6 +4,11 @@ local ADDON_NAME, JustQuest = ...
 
 local SafetyEngine = {}
 
+-- Hot path locals
+local GetTime = GetTime
+local pcall = pcall
+local wipe = wipe
+
 -- Module cache (lazy initialization)
 local moduleCache = {}
 
@@ -249,20 +254,20 @@ function SafetyEngine.MarkSelection(npcGUID, optionID)
     local recent = recentSelections[npcGUID]
     recent.lastTime = now
 
-    local cleanedHistory = {}
-    for _, entry in ipairs(recent.history) do
-        if (now - entry.time) < ttl then
-            table.insert(cleanedHistory, entry)
+    -- Filter expired entries in-place to avoid allocating a new table each call.
+    local h = recent.history
+    local write = 0
+    for read = 1, #h do
+        if (now - h[read].time) < ttl then
+            write = write + 1
+            h[write] = h[read]
         end
     end
+    for i = write + 1, #h do h[i] = nil end
 
-    table.insert(cleanedHistory, { optionID = optionID, time = now })
-
-    while #cleanedHistory > 20 do
-        table.remove(cleanedHistory, 1)
-    end
-
-    recent.history = cleanedHistory
+    -- Append new entry and cap history at 20.
+    h[write + 1] = { optionID = optionID, time = now }
+    while #h > 20 do table.remove(h, 1) end
 end
 
 function SafetyEngine.ClearNPCSelection(npcGUID)
@@ -406,10 +411,11 @@ function SafetyEngine.ValidateInteraction(options, uiColors)
     -- (API text from C_GossipInfo.GetOptions() is always plain, no color codes).
     uiColors = uiColors or {}
 
-    -- Pass 1: immediate-halt conditions.
-    -- Count server-colored options — multiple colored options means Blizzard
-    -- wants the player to choose.
+    -- Single pass: whitelist/warning/color checks merged with blacklist/safe-count
+    -- to halve the number of iterations over the options table.
     local coloredCount = 0
+    local safeCount = 0
+    local availableCount = 0
 
     for _, option in ipairs(options) do
         -- Whitelisted options are always safe — skip all other checks.
@@ -417,23 +423,31 @@ function SafetyEngine.ValidateInteraction(options, uiColors)
             return false, "whitelisted option found"
         end
 
-        if SafetyEngine.OptionIsAvailable(option) and option.name then
-            local optionKey = option.gossipOptionID or option.orderIndex
-            local uiInfo = optionKey and uiColors[optionKey]
+        if SafetyEngine.OptionIsAvailable(option) then
+            availableCount = availableCount + 1
 
-            -- Red/orange warning text: halt immediately.
-            -- Check UI frame text first (authoritative), fall back to API text.
-            if uiInfo and uiInfo.hasWarning then
-                DebugSafety("HALT: warning color in UI text: " .. (uiInfo.uiText or option.name))
-                return true, "warning_color_text"
-            elseif HasWarningColorCode(option.name) then
-                DebugSafety("HALT: warning color in API text: " .. option.name)
-                return true, "warning_color_text"
+            if option.name then
+                local optionKey = option.gossipOptionID or option.orderIndex
+                local uiInfo = optionKey and uiColors[optionKey]
+
+                -- Red/orange warning text: halt immediately.
+                -- Check UI frame text first (authoritative), fall back to API text.
+                if uiInfo and uiInfo.hasWarning then
+                    DebugSafety("HALT: warning color in UI text: " .. (uiInfo.uiText or option.name))
+                    return true, "warning_color_text"
+                elseif HasWarningColorCode(option.name) then
+                    DebugSafety("HALT: warning color in API text: " .. option.name)
+                    return true, "warning_color_text"
+                end
+
+                -- Track any server-colored option (blue, highlight, etc.)
+                if (uiInfo and uiInfo.hasColor) or HasAnyColorCode(option.name) then
+                    coloredCount = coloredCount + 1
+                end
             end
 
-            -- Track any server-colored option (blue, highlight, etc.)
-            if (uiInfo and uiInfo.hasColor) or HasAnyColorCode(option.name) then
-                coloredCount = coloredCount + 1
+            if not SafetyEngine.IsBlacklisted(option) then
+                safeCount = safeCount + 1
             end
         end
     end
@@ -442,19 +456,6 @@ function SafetyEngine.ValidateInteraction(options, uiColors)
     if coloredCount >= 2 then
         DebugSafety("HALT: " .. coloredCount .. " server-colored options require manual selection")
         return true, "multiple_important_options"
-    end
-
-    -- Pass 2: standard blocking checks.
-    local safeCount = 0
-    local availableCount = 0
-
-    for _, option in ipairs(options) do
-        if SafetyEngine.OptionIsAvailable(option) then
-            availableCount = availableCount + 1
-            local unsafe = SafetyEngine.IsBlacklisted(option)
-
-            if not unsafe then safeCount = safeCount + 1 end
-        end
     end
 
     if availableCount > 0 and safeCount == 0 then

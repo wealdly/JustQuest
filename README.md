@@ -62,16 +62,17 @@ Hides quest and gossip frames during automation for a seamless experience. Frame
 ## Installation
 
 1. Extract to `Interface\AddOns\JustQuest`
-2. `/jq` to see available commands
+2. `/jq` to open options (`/jq help` for command list)
 
 ## Commands
 
 ```text
-/jq              - Show help
+/jq              - Open options panel
+/jq help         - Show help
 /jq toggle       - Enable/disable addon
 /jq config       - Open settings panel
 /jq status       - Show current status
-/jq debug on|off - Toggle debug logging
+/jq debug [on|off] - Toggle debug logging
 /jq inspect      - Inspect current NPC/quest frame state
 /jq container add|remove|block|unblock|list <itemID>
                  - Manage container whitelist/blacklist
@@ -91,6 +92,16 @@ Options are available via `/jq config` or the WoW AddOns settings panel:
 | **Cinematics** | Skip cinematics and movies |
 | **Advanced** | Timeouts, fast mode, debug, LFG quick start |
 | **Profiles** | AceDB profiles |
+
+## Development Documentation
+
+For contributor and AI-agent workflows:
+
+- `CONTRIBUTING.md` - Contribution process and safety checklist
+- `Documentation/DEVELOPMENT.md` - Live development and validation workflow
+- `Documentation/STYLE_GUIDE.md` - Human-readable coding standards
+- `Documentation/STYLE_GUIDE_AI.md` - AI-optimized coding and formatting rules
+- `AGENTS.md` - Cross-agent operating guardrails
 
 ## Acknowledgments & Credits
 

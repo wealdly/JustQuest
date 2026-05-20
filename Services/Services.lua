@@ -703,7 +703,7 @@ end
 -- ============================================================
 
 function Services.LeaveInstance()
-    local inInstance, instanceTypeBasic = IsInInstance()
+    local inInstance = IsInInstance()
     if not inInstance then
         return false, "Not in an instance"
     end
@@ -713,8 +713,28 @@ function Services.LeaveInstance()
     
     Services.Debug("Instance", string.format("Leave attempt - %s (%s), Difficulty: %s (%d), InGroup: %s", 
         tostring(instanceName), tostring(instanceType), tostring(difficultyName), tostring(difficultyID), tostring(inGroup)))
+
+    -- Method 1: Walk-in party content (Delves) — use dedicated teleport out
+    local isWalkInParty = false
+    if C_PartyInfo and C_PartyInfo.IsPartyWalkIn then
+        local walkInSuccess, walkInResult = pcall(C_PartyInfo.IsPartyWalkIn)
+        if walkInSuccess then
+            isWalkInParty = walkInResult and true or false
+        else
+            Services.Debug("Instance", "IsPartyWalkIn check failed: " .. tostring(walkInResult))
+        end
+    end
+
+    if isWalkInParty and C_PartyInfo and C_PartyInfo.DelveTeleportOut then
+        local delveSuccess, delveErr = pcall(C_PartyInfo.DelveTeleportOut)
+        if delveSuccess then
+            Services.Debug("Instance", "Left via DelveTeleportOut (walk-in party)")
+            return true, "Teleporting out of delve..."
+        end
+        Services.Debug("Instance", "DelveTeleportOut failed: " .. tostring(delveErr))
+    end
     
-    -- Method 1: Grouped players — use instance category leave
+    -- Method 2: Grouped players — use instance category leave
     if inGroup then
         local LE_PARTY_CATEGORY_INSTANCE = 2
         local success, err = pcall(C_PartyInfo.LeaveParty, LE_PARTY_CATEGORY_INSTANCE)
@@ -737,7 +757,7 @@ function Services.LeaveInstance()
     
     -- Solo players from here on (not inGroup)
     
-    -- Method 2: Solo LFG content — try LFGTeleport
+    -- Method 3: Solo LFG content — try LFGTeleport
     if instanceType == "party" or instanceType == "raid" or instanceType == "scenario" then
         local inLFG = false
         if C_PartyInfo and C_PartyInfo.IsPartyLFG then
@@ -755,7 +775,7 @@ function Services.LeaveInstance()
         end
     end
     
-    -- Method 3: Solo non-LFG — ConvertToParty is PROTECTED
+    -- Method 4: Solo non-LFG — ConvertToParty is PROTECTED
     Services.Debug("Instance", "Solo non-LFG instance - manual party conversion required")
     
     local helpMessage = "Solo Exit → Right-click portrait → Convert to Party → Wait 60s → Auto-exits"

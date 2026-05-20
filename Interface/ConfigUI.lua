@@ -65,13 +65,12 @@ local function CreateGeneralOptions()
                 args = {
                     description = {
                         type = "description",
-                        name = "|cffffcc00What JustQuest Does:|r Automates quest interactions with safety rules.\n\n" ..
-                             "• Quest handling: accept, turn-in, and reward selection.\n" ..
-                             "• Quest dialog: auto-selects quest-flagged and blue-text dialog options.\n" ..
-                             "• Services: opens single vendor/trainer/banker dialogs for convenience.\n" ..
-                             "• Multiple quests: handles NPCs with multiple quests automatically.\n" ..
-                             "• Non-quest gossip is skipped (no quest flag, no colored text = no automation).\n\n" ..
-                             "Use the sections below to customize behavior.",
+                        name = "|cffffcc00What JustQuest Does:|r Automates quest interaction safely.\n\n" ..
+                            "• Accepts and turns in quests\n" ..
+                            "• Selects quest-indicated gossip (quest flags or server-colored text)\n" ..
+                            "• Opens single service options (vendor/trainer/banker)\n" ..
+                            "• Skips plain non-quest gossip\n\n" ..
+                            "Use the tabs below to tune behavior.",
                         order = 1,
                         fontSize = "medium",
                     },
@@ -86,7 +85,7 @@ local function CreateGeneralOptions()
                     enabled = {
                         type = "toggle",
                         name = "Enable JustQuest",
-                        desc = "Enable or disable the entire addon", 
+                        desc = "Master on/off switch.", 
                         order = 1,
                         get = CreateAccessor(nil, "enabled").get,
                         set = CreateAccessor(nil, "enabled").set,
@@ -94,7 +93,7 @@ local function CreateGeneralOptions()
                     automationToggle = {
                         type = "toggle",
                         name = "Quest & NPC Automation",
-                        desc = "Enable/disable quest and gossip automation (both work together for best results)", 
+                        desc = "Enable/disable quest and gossip automation.", 
                         order = 2,
                         get = function() 
                             local config = JustQuest.Core.GetModule("Config")
@@ -111,7 +110,7 @@ local function CreateGeneralOptions()
                     fastMode = {
                         type = "toggle",
                         name = "Fast Mode",
-                        desc = "Tighter timing and hide quest/gossip frames during automation.\n\nFrames only appear when automation halts for manual interaction.",
+                        desc = "Uses tighter timing and hides quest/gossip frames while automating.",
                         order = 2.5,
                         get = CreateAccessor(nil, "fastMode").get,
                         set = CreateAccessor(nil, "fastMode").set,
@@ -119,10 +118,18 @@ local function CreateGeneralOptions()
                     skipCinematics = {
                         type = "toggle",
                         name = "Skip Cinematics",
-                        desc = "Automatically skip quest cinematics, cutscenes, and movies",
+                        desc = "Skip quest cinematics and movies.",
                         order = 3,
                         get = CreateAccessor(nil, "skipCinematics").get,
                         set = CreateAccessor(nil, "skipCinematics").set,
+                    },
+                    resetInstanceOnExit = {
+                        type = "toggle",
+                        name = "Reset Instance On Exit",
+                        desc = "When using Quick Exit, automatically reset instances after you leave.\n\nFor 60-second ejection exits, reset waits until you are actually out.",
+                        order = 4,
+                        get = CreateAccessor("lfgQuickExit", "resetInstanceOnExit").get,
+                        set = CreateAccessor("lfgQuickExit", "resetInstanceOnExit").set,
                     },
                 }
             },
@@ -150,15 +157,16 @@ local function CreateQuestOptions()
                     acceptEscort = {
                         type = "toggle",
                         name = "Accept Escort Quests",
-                        desc = "Automatically accept escort/follow quests.\n\n|cffff9999Warning:|r These may take you through dangerous areas.",
+                        desc = "Accept escort/follow quests.\n\n|cffff9999Detection unavailable:|r No escort-quest API exists in modern WoW. This toggle is reserved for future use.",
                         order = 1,
+                        disabled = true,
                         get = CreateAccessor("quest", "acceptEscort").get,
                         set = CreateAccessor("quest", "acceptEscort").set,
                     },
                     acceptPvP = {
                         type = "toggle", 
                         name = "Accept PvP Quests",
-                        desc = "Automatically accept PvP and War Mode related quests.\n\n|cffff9999Warning:|r May flag you for PvP.",
+                        desc = "Accept PvP and War Mode quests. |cffff9999Warning:|r May flag you for PvP.",
                         order = 2,
                         get = CreateAccessor("quest", "acceptPvP").get,
                         set = CreateAccessor("quest", "acceptPvP").set,
@@ -166,7 +174,7 @@ local function CreateQuestOptions()
                     acceptRepeatable = {
                         type = "toggle",
                         name = "Accept Repeatable Quests",
-                        desc = "Automatically accept repeatable/daily quests",
+                        desc = "Accept repeatable quests (daily/weekly/world).",
                         order = 3,
                         get = CreateAccessor("quest", "acceptRepeatable").get,
                         set = CreateAccessor("quest", "acceptRepeatable").set,
@@ -174,7 +182,7 @@ local function CreateQuestOptions()
                     acceptTrade = {
                         type = "toggle",
                         name = "Accept Trade Skill Quests", 
-                        desc = "Automatically accept tradeskill quests",
+                        desc = "Accept profession/trade skill quests.",
                         order = 4,
                         get = CreateAccessor("quest", "acceptTrade").get,
                         set = CreateAccessor("quest", "acceptTrade").set,
@@ -182,7 +190,7 @@ local function CreateQuestOptions()
                     acceptTrivial = {
                         type = "toggle",
                         name = "Accept Trivial Quests",
-                        desc = "Accept trivial (grey/low-level) quests.\n\nUseful for Chromie Time, Party Sync, or completing old content.",
+                        desc = "Accept low-level (gray) quests.",
                         order = 5,
                         get = CreateAccessor("quest", "acceptTrivial").get,
                         set = CreateAccessor("quest", "acceptTrivial").set,
@@ -190,7 +198,7 @@ local function CreateQuestOptions()
                     acceptAccountCompleted = {
                         type = "toggle",
                         name = "Accept Account-Wide Completed",
-                        desc = "Accept quests already completed account-wide (Warband feature).\n\nDisable to skip quests done on other characters.",
+                        desc = "Accept quests already completed account-wide (Warband).",
                         order = 6,
                         get = CreateAccessor("quest", "acceptAccountCompleted").get,
                         set = CreateAccessor("quest", "acceptAccountCompleted").set,
@@ -198,7 +206,7 @@ local function CreateQuestOptions()
                     acceptQuestItems = {
                         type = "toggle",
                         name = "Accept Item/Proximity Quests",
-                        desc = "Automatically accept quests triggered by item use or area proximity (QuestIsFromAreaTrigger).\n\nDisable if you want to review item-started quests manually.",
+                        desc = "Accept quests triggered by item use or area proximity.",
                         order = 7,
                         get = CreateAccessor("quest", "acceptQuestItems").get,
                         set = CreateAccessor("quest", "acceptQuestItems").set,
@@ -214,7 +222,7 @@ local function CreateQuestOptions()
                     autoReward = {
                         type = "toggle",
                         name = "Auto-Select Rewards",
-                        desc = "Pick the most valuable reward automatically for simple cases; halts for potentially valuable choices.",
+                        desc = "Auto-pick simple rewards; halt for significant choices.",
                         order = 1,
                         get = CreateAccessor("quest", "autoReward").get,
                         set = CreateAccessor("quest", "autoReward").set,
@@ -222,11 +230,72 @@ local function CreateQuestOptions()
                     simpleRewardMode = {
                         type = "toggle",
                         name = "Simple Reward Mode",
-                        desc = "Use fast vendor-value selection instead of smart analysis (faster but ignores collectibles/upgrades).",
+                        desc = "Always choose highest vendor value (no collectible/upgrade logic).",
                         order = 2,
                         get = CreateAccessor("quest", "simpleRewardMode").get,
                         set = CreateAccessor("quest", "simpleRewardMode").set,
                         disabled = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            return not (config and config.Get("quest", "autoReward"))
+                        end,
+                    },
+                    usePawnScoring = {
+                        type = "toggle",
+                        name = "Use Pawn for Upgrade Scoring",
+                        desc = "When Pawn is installed, use stat-weight scoring to pick the best upgrade.\n" ..
+                               "Disable to always compare by item level instead.",
+                        order = 3,
+                        get = CreateAccessor("quest", "usePawnScoring").get,
+                        set = CreateAccessor("quest", "usePawnScoring").set,
+                        disabled = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            if not (config and config.Get("quest", "autoReward")) then return true end
+                            if config.Get("quest", "simpleRewardMode") then return true end
+                            return PawnGetItemData == nil  -- grey out if Pawn not installed
+                        end,
+                    },
+                    pawnUseLootSpec = {
+                        type = "toggle",
+                        name = "Follow Loot Specialization",
+                        desc = "Use your Loot Specialization setting (right-click portrait) to choose Pawn scales, " ..
+                               "rather than your currently active spec.\n" ..
+                               "Useful when queuing as DPS but gearing for tank/healer.",
+                        order = 4,
+                        get = CreateAccessor("quest", "pawnUseLootSpec").get,
+                        set = CreateAccessor("quest", "pawnUseLootSpec").set,
+                        disabled = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            if not (config and config.Get("quest", "autoReward")) then return true end
+                            if config.Get("quest", "simpleRewardMode") then return true end
+                            if config.Get("quest", "usePawnScoring") == false then return true end
+                            return PawnGetItemData == nil
+                        end,
+                    },
+                    pawnStatus = {
+                        type = "description",
+                        name = function()
+                            if PawnGetItemData == nil then
+                                return "|cff808080Pawn is not installed. Upgrade comparison uses item level.|r"
+                            end
+                            local config = JustQuest.Core.GetModule("Config")
+                            if config and config.Get("quest", "usePawnScoring") == false then
+                                return "|cffff8800Pawn installed but scoring disabled. Using item level.|r"
+                            end
+                            local lootSpecID = GetLootSpecialization and GetLootSpecialization() or 0
+                            local useLootSpec = not config or config.Get("quest", "pawnUseLootSpec") ~= false
+                            local specNote = ""
+                            if useLootSpec and lootSpecID and lootSpecID > 0 then
+                                local _, lootSpecName = GetSpecializationInfoByID and GetSpecializationInfoByID(lootSpecID)
+                                specNote = " (loot spec: " .. (lootSpecName or "?") .. ")"
+                            elseif not useLootSpec then
+                                local _, specName = GetSpecializationInfo and GetSpecializationInfo(GetSpecialization())
+                                specNote = " (active spec: " .. (specName or "?") .. ")"
+                            end
+                            return "|cff00ff00Pawn active" .. specNote .. ".|r"
+                        end,
+                        order = 5,
+                        fontSize = "small",
+                        hidden = function()
                             local config = JustQuest.Core.GetModule("Config")
                             return not (config and config.Get("quest", "autoReward"))
                         end,
@@ -241,15 +310,15 @@ local function CreateQuestOptions()
                 args = {
                     info = {
                         type = "description",
-                        name = "|cffffcc00Blocked Quests:|r Prevent specific quests from being auto-accepted.\n" ..
-                               "Enter the Quest ID (found in quest URLs or with /questid command).",
+                        name = "|cffffcc00Blocked Quests:|r Quests in this list are never auto-accepted.\n" ..
+                               "Add by quest ID.",
                         order = 1,
                         fontSize = "medium",
                     },
                     addQuest = {
                         type = "input",
                         name = "Add Quest ID",
-                        desc = "Enter a Quest ID to block from auto-acceptance",
+                        desc = "Add a quest ID to the blocked list.",
                         width = "full",
                         order = 2,
                         get = function() return "" end,
@@ -267,7 +336,7 @@ local function CreateQuestOptions()
                     removeQuest = {
                         type = "select",
                         name = "Remove Quest",
-                        desc = "Select a quest to remove from blocked list",
+                        desc = "Remove a quest from the blocked list.",
                         values = function()
                             local values = {}
                             local config = JustQuest.Core.GetModule("Config")
@@ -313,6 +382,78 @@ local function CreateQuestOptions()
                     },
                 },
             },
+            currencyWhitelist = {
+                type = "group",
+                name = "Currency Spending Whitelist",
+                inline = true,
+                order = 5,
+                args = {
+                    info = {
+                        type = "description",
+                        name = "|cffffcc00Currency Whitelist:|r Quests here are allowed to auto-spend currencies " ..
+                               "without prompting. Use |cff00ff00Always Allow|r in the confirmation popup to add entries.\n" ..
+                               "Select a quest below to remove it.",
+                        order = 1,
+                        fontSize = "medium",
+                    },
+                    removeEntry = {
+                        type = "select",
+                        name = "Remove Entry",
+                        desc = "Remove a quest from the currency spending whitelist.",
+                        values = function()
+                            local values = {}
+                            local config = JustQuest.Core.GetModule("Config")
+                            local whitelist = config and config.GetCurrencyQuestWhitelist and config.GetCurrencyQuestWhitelist() or {}
+                            for questID, entry in pairs(whitelist) do
+                                local title = (type(entry) == "table" and entry.title) or
+                                              (C_QuestLog and C_QuestLog.GetTitleForQuestID(questID)) or
+                                              "Quest " .. questID
+                                values[questID] = string.format("%s (ID: %d)", title, questID)
+                            end
+                            return values
+                        end,
+                        order = 2,
+                        get = function() return nil end,
+                        set = function(info, value)
+                            if value then
+                                local config = JustQuest.Core.GetModule("Config")
+                                if config and config.RemoveCurrencyQuestWhitelist then
+                                    config.RemoveCurrencyQuestWhitelist(value)
+                                    if ACR then ACR:NotifyChange("JustQuest") end
+                                end
+                            end
+                        end,
+                    },
+                    entryList = {
+                        type = "description",
+                        order = 3,
+                        name = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            local whitelist = config and config.GetCurrencyQuestWhitelist and config.GetCurrencyQuestWhitelist() or {}
+                            local count = 0
+                            for _ in pairs(whitelist) do count = count + 1 end
+
+                            if count == 0 then
+                                return "|cffaaaaaaNone.|r"
+                            end
+
+                            local s = string.format("|cffffcc00Whitelisted quests (%d):|r\n", count)
+                            for questID, entry in pairs(whitelist) do
+                                local title = (type(entry) == "table" and entry.title) or
+                                              (C_QuestLog and C_QuestLog.GetTitleForQuestID(questID)) or
+                                              "Quest " .. questID
+                                local currencies = (type(entry) == "table" and entry.currencies) or ""
+                                if currencies ~= "" then
+                                    s = s .. string.format("• %s (ID: %d) — %s\n", title, questID, currencies)
+                                else
+                                    s = s .. string.format("• %s (ID: %d)\n", title, questID)
+                                end
+                            end
+                            return s
+                        end,
+                    },
+                },
+            },
         }
     }
 end
@@ -336,9 +477,9 @@ local function CreateGossipOptions()
                     rulesInfo = {
                         type = "description",
                         name = "|cffffcc00Whitelist vs Blacklist:|r\n" ..
-                               "• |cff00ff00Whitelist:|r Trusted options that bypass ALL safety checks and are selected immediately (except repeat protection).\n" ..
-                               "• |cffff0000Blacklist:|r Dangerous keywords — matching options are skipped and the next safe option is selected instead. Automation only halts if ALL options are unsafe.\n\n" ..
-                               "|cffffcc00Note:|r Only quest-indicated dialog (quest-flagged or blue/colored text) is automated. Plain gossip with no quest indicators is always skipped.\n",
+                               "• |cff00ff00Whitelist:|r Selected immediately (still respects repeat protection).\n" ..
+                               "• |cffff0000Blacklist:|r Matching options are skipped; addon picks next safe option.\n\n" ..
+                               "|cffffcc00Note:|r Only quest-indicated dialog (quest flags or server-colored text) is automated. Plain gossip is skipped.\n",
                         order = 1, 
                         fontSize = "medium",
                     },
@@ -352,7 +493,7 @@ local function CreateGossipOptions()
                             wlAdd = {
                                 type = "input", 
                                 name = "Add Trusted Text",
-                                desc = "Enter exact gossip text to whitelist. Will be auto-selected immediately, bypassing all safety checks.\nTip: enable Debug Mode to see exact text.",
+                                desc = "Add exact gossip text to whitelist. Tip: enable Debug Mode to capture exact text.",
                                 width = "full", 
                                 order = 1,
                                 get = function() return "" end,
@@ -370,7 +511,7 @@ local function CreateGossipOptions()
                             wlRemove = {
                                 type = "select", 
                                 name = "Remove Trusted Text",
-                                desc = "Select an item to remove from whitelist",
+                                desc = "Remove an entry from the whitelist.",
                                 values = function()
                                     local values = {}
                                     local config = JustQuest.Core.GetModule("Config")
@@ -421,7 +562,7 @@ local function CreateGossipOptions()
                             blAdd = {
                                 type = "input", 
                                 name = "Add Dangerous Keyword",
-                                desc = "Enter keyword/phrase to blacklist (substring match). Matching options are skipped; automation halts only if ALL options are unsafe.\nExamples: 'teleport', 'skip campaign', 'Stay awhile'.",
+                                desc = "Add keyword/phrase blacklist match (substring). Examples: 'teleport', 'skip campaign'.",
                                 width = "full", 
                                 order = 1,
                                 get = function() return "" end,
@@ -439,7 +580,7 @@ local function CreateGossipOptions()
                             blRemove = {
                                 type = "select", 
                                 name = "Remove Keyword",
-                                desc = "Select an item to remove from blacklist",
+                                desc = "Remove an entry from the blacklist.",
                                 values = function()
                                     local values = {}
                                     local config = JustQuest.Core.GetModule("Config")
@@ -482,7 +623,7 @@ local function CreateGossipOptions()
                             blDefaults = {
                                 type = "execute", 
                                 name = "Reset Blacklist to Safe Defaults",
-                                desc = "Restore the shipped blacklist (teleports, story skips, etc.).",
+                                desc = "Restore the default blacklist.",
                                 order = 4,
                                 func = function()
                                     local defaults = JustQuest.Constants and JustQuest.Constants.DEFAULTS
@@ -523,7 +664,7 @@ local function CreateContainerOptions()
                     enabled = {
                         type = "toggle",
                         name = "Enable",
-                        desc = "Automatically open whitelisted containers",
+                        desc = "Auto-open whitelisted containers.",
                         order = 1,
                         get = CreateAccessor("containers", "enabled").get,
                         set = CreateAccessor("containers", "enabled").set,
@@ -531,7 +672,7 @@ local function CreateContainerOptions()
                     throttleDelay = {
                         type = "range",
                         name = "Opening Delay",
-                        desc = "Minimum delay between opening containers (seconds)",
+                        desc = "Minimum delay between container opens (seconds).",
                         min = 0.1,
                         max = 2.0,
                         step = 0.1,
@@ -542,9 +683,7 @@ local function CreateContainerOptions()
                     useDatabaseFallback = {
                         type = "toggle",
                         name = "Use Built-In Database (Optional)",
-                        desc = "Enable a pre-populated database of ~1000 safe containers as a fallback.\n\n" ..
-                               "Disabled by default. When enabled, unlisted containers check the database.\n" ..
-                               "You can still customize your whitelist/blacklist with this enabled.",
+                        desc = "Use the built-in safe-container database as fallback for unlisted items.",
                         order = 3,
                         get = CreateAccessor("containers", "useDatabaseFallback").get,
                         set = CreateAccessor("containers", "useDatabaseFallback").set,
@@ -561,8 +700,8 @@ local function CreateContainerOptions()
                     listsInfo = {
                         type = "description",
                         name = "|cffffcc00How to add containers:|r\n" ..
-                               "• Click 'Add Item ID' box below, then |cff00ff00Shift-Click|r a container in your bags.\n" ..
-                               "• Or manually enter an Item ID.\n",
+                               "• Click an Add box, then |cff00ff00Shift-Click|r a container in your bags\n" ..
+                               "• Or enter the item ID manually\n",
                         order = 1,
                         fontSize = "medium",
                     },
@@ -576,7 +715,7 @@ local function CreateContainerOptions()
                             wlAdd = {
                                 type = "input",
                                 name = "Add Item ID (or Shift-Click item)",
-                                desc = "Enter Item ID to whitelist, or Shift-Click a container in your bags to insert its link",
+                                desc = "Add an item ID to whitelist (or Shift-Click a bag item).",
                                 width = "full",
                                 order = 1,
                                 get = function() return "" end,
@@ -605,7 +744,7 @@ local function CreateContainerOptions()
                             wlRemove = {
                                 type = "select",
                                 name = "Remove Item",
-                                desc = "Select an item to remove from whitelist",
+                                desc = "Remove an item from whitelist.",
                                 order = 2,
                                 values = function()
                                     local values = {}
@@ -662,7 +801,7 @@ local function CreateContainerOptions()
                             blAdd = {
                                 type = "input",
                                 name = "Add Item ID (or Shift-Click item)",
-                                desc = "Enter Item ID to blacklist, or Shift-Click a container in your bags to insert its link",
+                                desc = "Add an item ID to blacklist (or Shift-Click a bag item).",
                                 width = "full",
                                 order = 1,
                                 get = function() return "" end,
@@ -691,7 +830,7 @@ local function CreateContainerOptions()
                             blRemove = {
                                 type = "select",
                                 name = "Remove Item",
-                                desc = "Select an item to remove from blacklist",
+                                desc = "Remove an item from blacklist.",
                                 order = 2,
                                 values = function()
                                     local values = {}
@@ -757,15 +896,14 @@ local function CreateAdvancedOptions()
             },
             warning = {
                 type = "description",
-                name = "|cffffcc00Internal settings for power users.|r\n\n" ..
-                       "|cffff6666Warning:|r Change only if you know what you're doing.\n",
+                name = "|cffffcc00Advanced settings.|r Tune only if needed.\n",
                 order = 2,
                 fontSize = "medium",
             },
             debugMode = {
                 type = "toggle",
                 name = "Debug Mode", 
-                desc = "Show debug messages in chat (for troubleshooting)",
+                desc = "Show debug messages in chat.",
                 order = 3,
                 get = CreateAccessor(nil, "debugMode").get,
                 set = CreateAccessor(nil, "debugMode").set,
@@ -779,12 +917,12 @@ local function CreateAdvancedOptions()
                     safetyDesc = {
                         type = "description",
                         name = "|cff88ff88Built-in protections:|r\n\n" ..
-                               "• Only automates quest-indicated dialog (quest flags, blue text)\n" ..
+                               "• Automates only quest-indicated dialog (quest flags or server-colored text)\n" ..
                                "• Plain gossip with no quest indicators is never automated\n" ..
                                "• Single service options (vendor, trainer) auto-selected for convenience\n" ..
                                "• Multiple service options halt for manual selection\n" ..
-                               "• Blacklist catches teleports, portals, story skips by keyword\n" ..
-                               "• Detects warning colors (red/orange) in NPC text\n" ..
+                               "• Blacklist skips dangerous keywords (teleports, story skips, etc.)\n" ..
+                               "• Warning colors (red/orange) halt automation\n" ..
                                "• Multiple server-colored options halt for manual choice\n" ..
                                "• Prevents infinite gossip loops (repeat protection)\n" ..
                                "• Blocks all StaticPopup dialogs (delves, dungeons, confirmations)\n" ..
@@ -803,7 +941,7 @@ local function CreateAdvancedOptions()
                     timingMultiplier = {
                         type = "range",
                         name = "Timing Multiplier",
-                        desc = "Global speed control for all delays\n0.75 = Fast (low latency)\n1.0 = Normal (recommended)\n2.0 = Conservative (high latency)",
+                        desc = "Global delay multiplier. 0.75 = faster, 1.0 = normal, 2.0 = slower.",
                         min = 0.75,
                         max = 2.0,
                         step = 0.05,
@@ -814,7 +952,7 @@ local function CreateAdvancedOptions()
                     chainDepth = {
                         type = "range",
                         name = "Maximum Chain Depth",
-                        desc = "Maximum gossip chain depth to follow",
+                        desc = "Max number of chained gossip selections before halt.",
                         min = 1, 
                         max = 15, 
                         step = 1,
