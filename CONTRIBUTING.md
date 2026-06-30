@@ -98,10 +98,18 @@ Before submitting:
 
 ## Versioning and Releases
 
-- Do not bump versions unless explicitly requested by the maintainer.
-- Do not tag/release from automation unless requested.
+- Do not bump versions, tag, or release unless explicitly requested by the maintainer.
 - Keep `UNRELEASED.md` current during active development.
-- Update version metadata and release notes only as part of explicit release work.
+
+When a release is requested, use `release.ps1` (same flow as JustAC):
+
+1. `.\release.ps1 -Version X.Y.Z` promotes `UNRELEASED.md` into `CHANGELOG.md`, bumps
+   `JustQuest.toc`, and resets `UNRELEASED.md`. It prints the git commands; it does not
+   commit.
+2. Review the diff, then `git commit -m "release: X.Y.Z"`, `git tag vX.Y.Z`, and
+   `git push --follow-tags`. The tag push triggers the CurseForge release workflow.
+
+`build.ps1` produces a local test zip only and is not part of publishing.
 
 ## Questions
 

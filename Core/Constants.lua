@@ -79,9 +79,12 @@ JustQuest.Constants.TIMING = {
     
     QUEST_ACCEPT_POLL_INTERVAL = 0.05,
     
-    -- Safety thresholds (not scaled)
-    QUEST_PROCESSING_TIMEOUT = 3.0,
-    AUTO_RECOVERY_TIMEOUT = 5.0,
+    -- Safety thresholds (not scaled). These bound the gap between consecutive
+    -- automation steps (one server round-trip), NOT the whole loop — _lastProcessingTime
+    -- updates every step, so a stall only grows the gap when a step's reply never comes.
+    -- A normal step is well under a second, so ~1.5s already clears worst-case latency.
+    QUEST_PROCESSING_TIMEOUT = 1.5,
+    AUTO_RECOVERY_TIMEOUT = 1.5,
     REINTERACT_QUEST_WINDOW = 0.5,
     GOSSIP_REPEAT_WINDOW = 1.50,
     

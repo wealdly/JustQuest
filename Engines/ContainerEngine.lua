@@ -7,35 +7,10 @@ local DANGEROUS_CONTAINERS = JustQuest.Database.DANGEROUS_CONTAINERS
 
 local ContainerEngine = {}
 
--- Module cache (lazy initialization)
-local moduleCache = {}
-
--- ============================================================
--- Helper Functions
--- ============================================================
-
-local function GetSafetyEngine()
-    if not moduleCache.SafetyEngine then
-        moduleCache.SafetyEngine = JustQuest.Core.GetModule("SafetyEngine")
-    end
-    return moduleCache.SafetyEngine
-end
-
-local function GetServices()
-    if not moduleCache.Services then
-        moduleCache.Services = JustQuest.Core.GetModule("Services")
-    end
-    return moduleCache.Services
-end
-
-local function GetConfig()
-    if not moduleCache.Config then
-        moduleCache.Config = JustQuest.Core.GetModule("Config")
-    end
-    return moduleCache.Config
-end
-
--- (tooltip hook removed)
+-- Memoized module accessors
+local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
+local GetServices     = JustQuest.Core.ModuleGetter("Services")
+local GetConfig       = JustQuest.Core.ModuleGetter("Config")
 
 local lastOpenTime = 0
 local isProcessing = false
@@ -567,9 +542,6 @@ function ContainerEngine.OnBagUpdateDelayed()
     isProcessing = false
 end
 
-function ContainerEngine.OnPlayerEnteringWorld()
-end
-
 function ContainerEngine.ExpectContainer(itemID, itemName)
     -- Prepare for immediate opening when the item lands in bags (resets throttle)
     if not itemID then return end
@@ -687,32 +659,18 @@ function ContainerEngine.OnItemLockChanged(bagID, slotID)
     end
 end
 
-function ContainerEngine.ScanNow()
-    ContainerEngine.OnBagUpdateDelayed()
-end
-
--- ============================================================
--- Tooltip Enhancement
--- ============================================================
-
--- Show whitelist/blacklist status in tooltips
--- Tooltip UI enhancement removed: no runtime tooltip hooks
-
 local eventFrame = CreateFrame("Frame")
 
 function ContainerEngine.Initialize()
     UpdateConfigCache()
     
     eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:RegisterEvent("ITEM_LOCK_CHANGED")
     eventFrame:RegisterEvent("QUEST_TURNED_IN")
-    
+
     eventFrame:SetScript("OnEvent", function(self, event, ...)
         if event == "BAG_UPDATE_DELAYED" then
             ContainerEngine.OnBagUpdateDelayed()
-        elseif event == "PLAYER_ENTERING_WORLD" then
-            ContainerEngine.OnPlayerEnteringWorld()
         elseif event == "ITEM_LOCK_CHANGED" then
             local bagID, slotID = ...
             ContainerEngine.OnItemLockChanged(bagID, slotID)
@@ -768,76 +726,6 @@ end
 -- Refresh config cache when settings change
 function ContainerEngine.RefreshConfigCache()
     UpdateConfigCache()
-end
-
-function ContainerEngine.AddSafeContainer(itemID, name)
-    local config = GetConfig()
-    if config and config.AddContainerWhitelist then
-        config.AddContainerWhitelist(itemID, name)
-    end
-end
-
-function ContainerEngine.RemoveSafeContainer(itemID)
-    local config = GetConfig()
-    if config and config.RemoveContainerWhitelist then
-        config.RemoveContainerWhitelist(itemID)
-    end
-end
-
-function ContainerEngine.IsSafeContainer(itemID)
-    return IsSafeContainer(itemID)
-end
-
-function ContainerEngine.GetSafeContainers()
-    local config = GetConfig()
-    if config then
-        return config.Get("containers", "whitelist") or {}
-    end
-    return {}
-end
-
-function ContainerEngine.GetDangerousContainers()
-    local config = GetConfig()
-    if config then
-        return config.Get("containers", "blacklist") or {}
-    end
-    return {}
-end
-
--- Reset notification throttle (useful for testing/debugging)
-function ContainerEngine.ResetNotifications()
-    -- Notification system removed - keeping function for compatibility
-end
-
--- Debug function to inspect internal state
-function ContainerEngine.GetDebugInfo()
-    local config = GetConfig()
-    local services = GetServices()
-    
-    local failedCount = 0
-    for _ in pairs(failedContainers) do
-        failedCount = failedCount + 1
-    end
-    
-    local lockedCount = 0
-    for _ in pairs(containerLockState) do
-        lockedCount = lockedCount + 1
-    end
-    
-    return {
-        enabled = IsContainerOpeningEnabled(),
-        addonEnabled = config and config.Get(nil, "enabled") or false,
-        containerEnabled = config and config.Get("containers", "enabled") or false,
-        canAutomate = services and services.CanAutomateContainers() or false,
-        isProcessing = isProcessing,
-        -- tooltipHookAvailable removed
-        lastOpenTime = lastOpenTime,
-        timeSinceLastOpen = GetTime() - lastOpenTime,
-        throttleDelay = GetThrottleDelay(),
-        failedCount = failedCount,
-        lockedCount = lockedCount,
-        inCombat = InCombatLockdown(),
-    }
 end
 
 -- ============================================================

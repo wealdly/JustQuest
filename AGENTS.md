@@ -63,10 +63,20 @@ Also verify modifier-key pause behavior and at least one full quest accept/turn-
 
 ## 7. Release and Version Guardrails
 
-- Do not auto-bump versions unless explicitly requested.
-- Do not create tags or trigger releases unless explicitly requested.
-- Do not auto-build or push unless explicitly requested.
-- Keep `UNRELEASED.md` current during feature and fix work.
+Do not bump versions, build, commit, tag, push, or publish unless explicitly
+requested. Keep `UNRELEASED.md` current during feature and fix work.
+
+When a release is requested, the flow (same as JustAC) is:
+
+1. `.\release.ps1 -Version X.Y.Z` — promotes `UNRELEASED.md` into `CHANGELOG.md`
+   under a new `## [X.Y.Z] - date` heading, bumps `JustQuest.toc`, and resets
+   `UNRELEASED.md`. It does not commit; it prints the git commands.
+2. Review the diff.
+3. `git commit -m "release: X.Y.Z"` → `git tag vX.Y.Z` → `git push --follow-tags`
+   (the tag push triggers `.github/workflows/release.yml` → CurseForge).
+
+Releases are cut from the working branch. `build.ps1` only makes a local test zip
+and is not part of publishing.
 
 ## 8. Attribution Guardrail
 

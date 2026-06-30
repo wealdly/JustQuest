@@ -14,40 +14,19 @@ local lastResetTime = 0
 local recentAcceptAttempts = {}
 local ACCEPT_ATTEMPT_TTL = 5.0
 
--- Module cache (lazy initialization)
-local moduleCache = {}
+-- Authoritative quest-log-full signal. Set by ERR_QUEST_LOG_FULL (WoW fires it when
+-- an accept actually fails for fullness — the reliable signal, since the quest COUNT
+-- is unreliable), cleared by QUEST_REMOVED when a slot frees. While set, accepts are
+-- paused so we don't spam doomed AcceptQuest calls (and re-trigger WoW's error).
+local questLogFull = false
+local QUEST_LOG_FULL_ERR = LE_GAME_ERR_QUEST_LOG_FULL  -- numeric error type (may be nil on old clients)
+local errorEventFrame  -- holds UI_ERROR_MESSAGE / QUEST_REMOVED listener (created in Initialize)
 
--- ============================================================
--- Helper Functions
--- ============================================================
-
-local function GetSafetyEngine()
-    if not moduleCache.SafetyEngine then
-        moduleCache.SafetyEngine = JustQuest.Core.GetModule("SafetyEngine")
-    end
-    return moduleCache.SafetyEngine
-end
-
-local function GetServices()
-    if not moduleCache.Services then
-        moduleCache.Services = JustQuest.Core.GetModule("Services")
-    end
-    return moduleCache.Services
-end
-
-local function GetConfig()
-    if not moduleCache.Config then
-        moduleCache.Config = JustQuest.Core.GetModule("Config")
-    end
-    return moduleCache.Config
-end
-
-local function GetGameData()
-    if not moduleCache.GameData then
-        moduleCache.GameData = JustQuest.Core.GetModule("GameData")
-    end
-    return moduleCache.GameData
-end
+-- Memoized module accessors
+local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
+local GetServices     = JustQuest.Core.ModuleGetter("Services")
+local GetConfig       = JustQuest.Core.ModuleGetter("Config")
+local GetGameData     = JustQuest.Core.ModuleGetter("GameData")
 
 -- ============================================================
 -- Currency Confirmation Popup
@@ -61,7 +40,7 @@ local function CurrencyPopup_Spend(data)
     local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
     local services = JustQuest.Core.GetModule("Services")
     if safetyEngine then safetyEngine.SetState("BUSY", "completing_quest") end
-    if services then services.SafeCallWithRetry(CompleteQuest, 3) end
+    if services then services.SafeCall(CompleteQuest) end
 end
 
 local function CurrencyPopup_Cancel()
@@ -298,8 +277,11 @@ local function ProcessActiveQuests()
 end
 
 local function ProcessAvailableQuests()
+    -- Log full: pause accepts (turn-ins still run and free slots → clears the flag).
+    if questLogFull then return false end
+
     local services = GetServices()
-    
+
     local success, quests = pcall(C_GossipInfo.GetAvailableQuests)
     if not (success and quests and #quests > 0) then
         return false
@@ -314,14 +296,10 @@ local function ProcessAvailableQuests()
     end
     
     if #visible == 0 then
-        -- Check if we skipped quests due to full log
-        if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetMaxNumQuestsCanAccept then
-            local _, numQuests = C_QuestLog.GetNumQuestLogEntries()
-            local maxQuests = C_QuestLog.GetMaxNumQuestsCanAccept() or 35
-            if (numQuests or 0) >= maxQuests and services and services.OutputHalt then
-                services.OutputHalt("quest_log_full", (numQuests or 0) .. "/" .. maxQuests)
-            end
-        end
+        -- Nothing acceptable here (all filtered: already in log, blocked, trivial,
+        -- recently attempted). We don't guess "log full" from the quest count — it's
+        -- unreliable (counts non-cap quests). A genuinely full log surfaces via WoW's
+        -- own error when an accept is attempted.
         return false
     end
     
@@ -667,14 +645,14 @@ function QuestEngine.OnQuestLogUpdate()
             
             if shouldProcess then
                 if popupType == "COMPLETE" then 
-                    services.SafeCallWithRetry(ShowQuestComplete, 3, questID)
+                    services.SafeCall(ShowQuestComplete, questID)
                 elseif popupType == "OFFER" then 
-                    services.SafeCallWithRetry(ShowQuestOffer, 3, questID)
+                    services.SafeCall(ShowQuestOffer, questID)
                 end
             end
         end
         
-        services.SafeCallWithRetry(RemoveAutoQuestPopUp, 3, questID)
+        services.SafeCall(RemoveAutoQuestPopUp, questID)
     end
 end
 
@@ -735,45 +713,47 @@ function QuestEngine.OnQuestDetail()
         end
     end
     
+    -- Auto-accept quests are already accepted server-side (we just close). For a real
+    -- accept, honor the authoritative full-log signal and don't re-attempt a doomed
+    -- accept — that just re-fires WoW's "quest log is full" error. The flag clears on
+    -- QUEST_REMOVED. (We don't probe the quest count: it includes campaign/world/calling
+    -- quests that don't count toward the cap, so it reads false-full, e.g. 40/35 at 32/35.)
+    local autoAccept = QuestGetAutoAccept and QuestGetAutoAccept()
+    if questLogFull and not autoAccept then
+        if services.Debug then services.Debug("Quest", "Skipping accept — quest log full") end
+        if safetyEngine then safetyEngine.EndProcessing("quest_log_full") end
+        return
+    end
+
     -- Ensure BUSY state for quest processing.
     -- May already be BUSY (from OnGossipShow) or IDLE (direct quest open via item/proximity).
     if safetyEngine then
         safetyEngine.SetState("BUSY", "accepting_quest")
     end
 
-    -- Accept quest
-    if QuestGetAutoAccept and QuestGetAutoAccept() then
-        services.SafeCallWithRetry(CloseQuest, 3)
+    -- Accept quest.
+    if autoAccept then
+        services.SafeCall(CloseQuest)
     else
-        services.SafeCallWithRetry(AcceptQuest, 3)
+        services.SafeCall(AcceptQuest)
     end
 
-    -- Verify accept succeeded (quest should now be in log)
-    local acceptSucceeded = C_QuestLog and C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(questID)
-    
+    -- The accept is async — QUEST_ACCEPTED is the real confirmation (it clears the
+    -- attempt tracker on success). Don't poll IsOnQuest here: the round-trip hasn't
+    -- completed, so it reports false failures even when the accept worked.
     if services.Debug then
-        if acceptSucceeded then
-            services.Debug("Quest", string.format("Accepted: %s (ID: %d) - confirmed in log", questTitle, questID))
-        else
-            -- Check for common failure reasons
-            local _, numQuests = C_QuestLog.GetNumQuestLogEntries()
-            numQuests = numQuests or 0
-            local maxQuests = C_QuestLog and C_QuestLog.GetMaxNumQuestsCanAccept and C_QuestLog.GetMaxNumQuestsCanAccept() or 35
-            services.Debug("Quest", string.format("Accept FAILED: %s (ID: %d) - not in log! (quests: %d/%d)", 
-                questTitle, questID, numQuests, maxQuests))
-        end
+        services.Debug("Quest", string.format("Issued %s for %s (ID: %d)",
+            autoAccept and "CloseQuest (auto-accept)" or "AcceptQuest", questTitle, questID))
     end
-    
-    -- Track this accept attempt to prevent race condition re-accept loops
+
+    -- Track this attempt to prevent race-condition re-accept loops.
     if questID and questID > 0 then
         recentAcceptAttempts[questID] = GetTime()
     end
-    
-    -- Update processing time for timeout tracking
+
     JustQuest._lastProcessingTime = GetTime()
-    
-    -- Reset to IDLE after accept so GOSSIP_SHOW fires for the next quest.
-    -- recentAcceptAttempts prevents re-selection of the same quest.
+
+    -- Reset to IDLE so GOSSIP_SHOW fires for the next quest.
     if safetyEngine then
         safetyEngine.EndProcessing("quest_accept_action_complete")
     end
@@ -901,7 +881,7 @@ function QuestEngine.OnQuestProgress()
             services.Debug("Quest", "OnQuestProgress: quest is completable; attempting turn-in")
         end
         
-        services.SafeCallWithRetry(CompleteQuest, 3)
+        services.SafeCall(CompleteQuest)
 
         JustQuest._stats.completeActions = (JustQuest._stats.completeActions or 0) + 1
         JustQuest._lastProcessingTime = GetTime()
@@ -912,6 +892,24 @@ function QuestEngine.OnQuestProgress()
     else
         if services.Debug then
             services.Debug("Quest", "Quest not completable - skipping turn-in")
+        end
+    end
+end
+
+-- Flag any whitelisted-container rewards so ContainerEngine opens them as soon
+-- as they land in bags. itemType is "choice" (selectable) or "reward" (guaranteed).
+local function ExpectWhitelistedContainers(containerEngine, itemType, count)
+    if count == 0 then return end
+    local config = GetConfig()
+    local whitelist = config and (config.Get("containers", "whitelist") or {}) or {}
+    for i = 1, count do
+        local ok, name, _, _, _, _, itemID = pcall(GetQuestItemInfo, itemType, i)
+        if ok and itemID and whitelist[itemID] then
+            if not name or name == "" then
+                name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID))
+                       or ("Item " .. tostring(itemID))
+            end
+            containerEngine.ExpectContainer(itemID, name)
         end
     end
 end
@@ -951,49 +949,8 @@ function QuestEngine.OnQuestComplete()
     
     -- Scan rewards for whitelisted containers
     if containerEngine and containerEngine.ExpectContainer then
-        local numChoices = GetNumQuestChoices and GetNumQuestChoices() or 0
-        
-        -- Check choice rewards
-        for i = 1, numChoices do
-            local success, name, texture, numItems, quality, isUsable, itemID = pcall(GetQuestItemInfo, "choice", i)
-            if success and itemID then
-                -- Get item name from cache if GetQuestItemInfo didn't return it
-                if not name or name == "" then
-                    local itemName = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID)
-                    name = itemName or ("Item " .. tostring(itemID))
-                end
-                
-                -- Check if this is a whitelisted container
-                local config = GetConfig()
-                if config then
-                    local whitelist = config.Get("containers", "whitelist") or {}
-                    if whitelist[itemID] then
-                        containerEngine.ExpectContainer(itemID, name)
-                    end
-                end
-            end
-        end
-        
-        -- Check guaranteed rewards (GetNumQuestRewards / GetQuestItemInfo("reward", index))
-        local numRewards = GetNumQuestRewards and GetNumQuestRewards() or 0
-        for i = 1, numRewards do
-            local success, name, texture, numItems, quality, isUsable, itemID = pcall(GetQuestItemInfo, "reward", i)
-            if success and itemID then
-                -- Get item name from cache if GetQuestItemInfo didn't return it
-                if not name or name == "" then
-                    local itemName = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID)
-                    name = itemName or ("Item " .. tostring(itemID))
-                end
-                
-                local config = GetConfig()
-                if config then
-                    local whitelist = config.Get("containers", "whitelist") or {}
-                    if whitelist[itemID] then
-                        containerEngine.ExpectContainer(itemID, name)
-                    end
-                end
-            end
-        end
+        ExpectWhitelistedContainers(containerEngine, "choice", GetNumQuestChoices and GetNumQuestChoices() or 0)
+        ExpectWhitelistedContainers(containerEngine, "reward", GetNumQuestRewards and GetNumQuestRewards() or 0)
     end
     
     if rewardEngine and rewardEngine.ProcessQuestReward then
@@ -1006,7 +963,7 @@ function QuestEngine.OnQuestComplete()
     else
         -- Fallback: no reward engine, just select reward
         local numChoices = GetNumQuestChoices and GetNumQuestChoices() or 0
-        services.SafeCallWithRetry(GetQuestReward, 3, numChoices == 1 and 1 or nil)
+        services.SafeCall(GetQuestReward, numChoices == 1 and 1 or nil)
     end
 end
 
@@ -1017,7 +974,7 @@ function QuestEngine.OnQuestAutoComplete(questID)
     if services and services.CanAutomate() and
        type(questID) == "number" and
        safetyEngine and safetyEngine.ShouldAcceptQuest(questID) then
-        services.SafeCallWithRetry(ShowQuestComplete, 3, questID)
+        services.SafeCall(ShowQuestComplete, questID)
     end
 end
 
@@ -1042,7 +999,7 @@ function QuestEngine.OnQuestAcceptConfirm(questGiver, questTitle)
     end
     
     if acceptEscort then
-        services.SafeCallWithRetry(ConfirmAcceptQuest, 3)
+        services.SafeCall(ConfirmAcceptQuest)
         
         if services.Debug then
             services.Debug("Quest", "Auto-accepted escort/shared quest: " .. tostring(questTitle))
@@ -1143,6 +1100,10 @@ end
 
 function QuestEngine.OnDisable()
     ResetProcessing()
+    questLogFull = false
+    if errorEventFrame then
+        errorEventFrame:UnregisterAllEvents()
+    end
 end
 
 function QuestEngine.ResetWorkflow()
@@ -1169,6 +1130,33 @@ end
 -- ============================================================
 
 function QuestEngine.Initialize()
+    -- Listen for the authoritative full-log signal and the slot-freed signal.
+    errorEventFrame = errorEventFrame or CreateFrame("Frame")
+    errorEventFrame:RegisterEvent("UI_ERROR_MESSAGE")
+    errorEventFrame:RegisterEvent("QUEST_REMOVED")
+    errorEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
+        if event == "UI_ERROR_MESSAGE" then
+            -- arg1 = numeric error type, arg2 = localized message. Match either so
+            -- it works whether or not LE_GAME_ERR_QUEST_LOG_FULL is defined.
+            local isFull = (QUEST_LOG_FULL_ERR and arg1 == QUEST_LOG_FULL_ERR)
+                        or (arg2 ~= nil and arg2 == ERR_QUEST_LOG_FULL)
+            if isFull and not questLogFull then
+                questLogFull = true
+                local services = GetServices()
+                if services then
+                    if services.OutputHalt then services.OutputHalt("quest_log_full") end
+                    if services.Debug then services.Debug("Quest", "ERR_QUEST_LOG_FULL — pausing accepts until a quest is removed") end
+                end
+            end
+        elseif event == "QUEST_REMOVED" then
+            -- A quest left the log: a slot may have freed, so resume accepts.
+            if questLogFull then
+                questLogFull = false
+                local services = GetServices()
+                if services and services.Debug then services.Debug("Quest", "Quest removed — resuming accepts") end
+            end
+        end
+    end)
 end
 
 -- ============================================================

@@ -9,9 +9,6 @@ local GetTime = GetTime
 local pcall = pcall
 local wipe = wipe
 
--- Module cache (lazy initialization)
-local moduleCache = {}
-
 -- ============================================================
 -- State Management (IDLE / BUSY)
 -- ============================================================
@@ -20,32 +17,18 @@ local state = "IDLE"
 local stateReason = nil
 local stateStartTime = GetTime()
 
-local recentSelections = {}
+-- Recent gossip-option selections for the CURRENT npc (loop prevention).
+-- Not keyed by GUID: under addon taint UnitGUID returns a "secret value" that
+-- cannot be used as a table key. Only one gossip NPC is active at a time, so a
+-- single history suffices; it is cleared on NPC change / gossip close.
+local selectionHistory = {}
 local statusAvailable      = nil
 local statusAlreadyComplete = nil
-local statusUnavailable    = nil  -- shown in UI but not clickable (requirement not met)
-local statusLocked         = nil  -- hidden/locked by server logic
 
-local function GetServices()
-    if not moduleCache.Services then
-        moduleCache.Services = JustQuest.Core.GetModule("Services")
-    end
-    return moduleCache.Services
-end
-
-local function GetConfig()
-    if not moduleCache.Config then
-        moduleCache.Config = JustQuest.Core.GetModule("Config")
-    end
-    return moduleCache.Config
-end
-
-local function GetGameData()
-    if not moduleCache.GameData then
-        moduleCache.GameData = JustQuest.Core.GetModule("GameData")
-    end
-    return moduleCache.GameData
-end
+-- Memoized module accessors
+local GetServices = JustQuest.Core.ModuleGetter("Services")
+local GetConfig   = JustQuest.Core.ModuleGetter("Config")
+local GetGameData = JustQuest.Core.ModuleGetter("GameData")
 
 local function DebugSafety(msg)
     local services = GetServices()
@@ -147,29 +130,46 @@ function SafetyEngine.Initialize()
 
     statusAvailable      = getEnum("GossipOptionStatus", "Available")
     statusAlreadyComplete = getEnum("GossipOptionStatus", "AlreadyComplete")
-    statusUnavailable    = getEnum("GossipOptionStatus", "Unavailable")
-    statusLocked         = getEnum("GossipOptionStatus", "Locked")
 
     SafetyEngine.RebuildLists()
 
     -- Periodic stuck-state recovery
     if services and services.ScheduleRepeating then
-        services.ScheduleRepeating("safety_stuck_state_recovery", 3.0, function()
-            if state == "BUSY" then
-                local config = GetConfig()
-                local timeout = config and config.Get("advanced", "autoRecoveryTimeout") or JustQuest.Constants.TIMING.AUTO_RECOVERY_TIMEOUT
-                local timeSinceActivity = GetTime() - (JustQuest._lastProcessingTime or 0)
+        services.ScheduleRepeating("safety_stuck_state_recovery", 1.0, function()
+            if state ~= "BUSY" then return end
 
-                local frameOpen = services.IsInteractionFrameOpen()
+            -- The currency-spend prompt is a deliberate, open-ended wait on the
+            -- player; its own popup handlers release the state. Never time it out.
+            if stateReason == "waiting_currency_prompt" then return end
 
-                if (timeSinceActivity > timeout and not frameOpen) or
-                   (not frameOpen and timeSinceActivity > 1.0) then
-                    if services.Debug then
-                        services.Debug("Safety", string.format("Periodic recovery: BUSY (%.1fs idle, frame=%s)",
-                            timeSinceActivity, frameOpen and "open" or "closed"))
-                    end
-                    SafetyEngine.EndProcessing("periodic_stuck_recovery")
+            local config = GetConfig()
+            local timeout = config and config.Get("advanced", "autoRecoveryTimeout") or JustQuest.Constants.TIMING.AUTO_RECOVERY_TIMEOUT
+            local timeSinceActivity = GetTime() - (JustQuest._lastProcessingTime or 0)
+            local frameOpen = services.IsInteractionFrameOpen()
+
+            -- Fast mode hides the quest/gossip frame (alpha 0) while automating.
+            -- The instant automation stalls, un-hide it so the player is never left
+            -- staring at an invisible, un-clickable window (the "walk away to
+            -- force-close it" trap) — well before the slower full reset below.
+            -- Normal steps are sub-second apart, so a >0.75s gap means stalled.
+            if timeSinceActivity > 0.75 then
+                services.RestoreAutomationFrames()
+            end
+
+            -- Recover when the frame is already closed (fast path), OR when
+            -- automation has stalled past the full timeout even with a frame
+            -- still open. The frame-open stall is the "stuck at turn-in" case:
+            -- a missed QUEST_COMPLETE/QUEST_TURNED_IN leaves us BUSY with the
+            -- quest frame up. Recovery used to require the player to walk away
+            -- (closing the frame) before it would fire.
+            if (not frameOpen and timeSinceActivity > 1.0) or timeSinceActivity > timeout then
+                if services.Debug then
+                    services.Debug("Safety", string.format("Periodic recovery: BUSY %s (%.1fs idle, frame=%s)",
+                        stateReason or "?", timeSinceActivity, frameOpen and "open" or "closed"))
                 end
+                -- Repump so a still-open quest/gossip frame is re-processed
+                -- instead of sitting idle until the next event.
+                SafetyEngine.EndProcessing("periodic_stuck_recovery", true)
             end
         end)
     end
@@ -194,31 +194,13 @@ function SafetyEngine.OptionIsAvailable(option)
     return true
 end
 
--- Returns true for options that are present on the NPC but not yet clickable.
--- Useful for anticipating what options will appear after automation acts
--- (e.g. vendor unlocks after accepting a prerequisite quest in the same frame).
-function SafetyEngine.OptionIsPending(option)
-    if not option then return false end
-    local status = option.status
-    if status == nil then return false end
-    if statusUnavailable ~= nil and statusLocked ~= nil then
-        return status == statusUnavailable or status == statusLocked
-    end
-    -- Enum not resolved: anything that isn't available/alreadyComplete counts as pending
-    return status ~= statusAvailable and status ~= statusAlreadyComplete
-end
-
-
 
 -- ============================================================
 -- Repeat/Selection Tracking (loop prevention)
 -- ============================================================
 
-function SafetyEngine.ShouldSkipRepeat(npcGUID, optionID, totalOptions)
-    if not npcGUID or not optionID then return false end
-
-    local recent = recentSelections[npcGUID]
-    if not recent or not recent.history then return false end
+function SafetyEngine.ShouldSkipRepeat(optionID, totalOptions)
+    if not optionID or #selectionHistory == 0 then return false end
 
     local config = GetConfig()
     local ttl = config and config.Get("advanced", "gossipRepeatWindow") or JustQuest.Constants.TIMING.GOSSIP_REPEAT_WINDOW
@@ -229,7 +211,7 @@ function SafetyEngine.ShouldSkipRepeat(npcGUID, optionID, totalOptions)
     end
 
     local now = GetTime()
-    for _, entry in ipairs(recent.history) do
+    for _, entry in ipairs(selectionHistory) do
         if entry.optionID == optionID and (now - entry.time) < ttl then
             DebugSafety(string.format("Repeat blocked: optionID=%s, %.2fs ago, ttl=%.2fs",
                 tostring(optionID), now - entry.time, ttl))
@@ -240,22 +222,15 @@ function SafetyEngine.ShouldSkipRepeat(npcGUID, optionID, totalOptions)
     return false
 end
 
-function SafetyEngine.MarkSelection(npcGUID, optionID)
-    if not (npcGUID and optionID) then return end
+function SafetyEngine.MarkSelection(optionID)
+    if not optionID then return end
 
     local now = GetTime()
     local config = GetConfig()
     local ttl = config and config.Get("advanced", "gossipRepeatWindow") or JustQuest.Constants.TIMING.GOSSIP_REPEAT_WINDOW
 
-    if not recentSelections[npcGUID] then
-        recentSelections[npcGUID] = { history = {}, lastTime = now }
-    end
-
-    local recent = recentSelections[npcGUID]
-    recent.lastTime = now
-
-    -- Filter expired entries in-place to avoid allocating a new table each call.
-    local h = recent.history
+    -- Prune expired entries in-place to avoid allocating a new table each call.
+    local h = selectionHistory
     local write = 0
     for read = 1, #h do
         if (now - h[read].time) < ttl then
@@ -270,199 +245,9 @@ function SafetyEngine.MarkSelection(npcGUID, optionID)
     while #h > 20 do table.remove(h, 1) end
 end
 
-function SafetyEngine.ClearNPCSelection(npcGUID)
-    if not npcGUID then return end
-    recentSelections[npcGUID] = nil
-end
-
-function SafetyEngine.CleanupRecentSelections()
-    local now = GetTime()
-    local maxAge = 300
-    local maxEntries = 10
-    local kept = 0
-
-    for guid, data in pairs(recentSelections) do
-        if now - data.lastTime > maxAge then
-            recentSelections[guid] = nil
-        else
-            kept = kept + 1
-        end
-    end
-
-    if kept > maxEntries then
-        local entries = {}
-        for guid, data in pairs(recentSelections) do
-            table.insert(entries, {guid = guid, time = data.lastTime})
-        end
-        table.sort(entries, function(a, b) return a.time < b.time end)
-        for i = 1, kept - maxEntries do
-            recentSelections[entries[i].guid] = nil
-        end
-    end
-end
-
--- ============================================================
--- Warning Color Detection (kept for gossip option text)
--- ============================================================
-
-local WARNING_COLORS = {
-    ["ff0000"] = true, ["ff3300"] = true, ["ff6600"] = true,
-    ["ff4500"] = true, ["cc0000"] = true, ["ff8000"] = true, ["ffaa00"] = true,
-    ["RED_FONT_COLOR"] = true, ["ORANGE_FONT_COLOR"] = true, ["DIM_RED_FONT_COLOR"] = true,
-}
-
-local SAFE_COLORS = {
-    ["0078ff"] = true, ["00aaff"] = true, ["00ccff"] = true, ["0099ff"] = true, ["00d1ff"] = true,
-    ["1eff00"] = true, ["00ff00"] = true, ["00ff96"] = true,
-    ["ffff00"] = true, ["ffd100"] = true, ["ffffff"] = true,
-    ["NORMAL_FONT_COLOR"] = true, ["HIGHLIGHT_FONT_COLOR"] = true,
-    ["GREEN_FONT_COLOR"] = true, ["YELLOW_FONT_COLOR"] = true, ["BATTLENET_FONT_COLOR"] = true,
-}
-
-local function HasWarningColorCode(text)
-    if not text or type(text) ~= "string" then return false end
-
-    for namedColor in text:gmatch("|cn([%w_]+):") do
-        if WARNING_COLORS[namedColor] then return true end
-    end
-
-    for hexColor in text:gmatch("|c%x%x(%x%x%x%x%x%x)") do
-        local lower = hexColor:lower()
-        if WARNING_COLORS[lower] then return true end
-        if not SAFE_COLORS[lower] then
-            local r = tonumber(lower:sub(1,2), 16) or 0
-            local g = tonumber(lower:sub(3,4), 16) or 0
-            local b = tonumber(lower:sub(5,6), 16) or 0
-            if r > 180 and g < 150 and b < 100 then return true end
-        end
-    end
-
-    return false
-end
-
--- Returns true if the server embedded ANY color code in option.name.
--- All gossip buttons share one default gold font (QuestFontLeft/SystemFont_Med2).
--- Any |c or |cn in option.name means the server deliberately colored this option
--- to signal importance — it is not just template styling.
--- |c matches both |cffRRGGBB hex codes and |cnNAME: named codes (|cn is a prefix of |c)
-local function HasAnyColorCode(text)
-    if not text or type(text) ~= "string" then return false end
-    return text:find("|c", 1, true) ~= nil
-end
-
--- Expose color detection for cross-module use
-SafetyEngine.HasWarningColorCode = HasWarningColorCode
-SafetyEngine.HasAnyColorCode = HasAnyColorCode
-
--- ============================================================
--- UI Frame Color Extraction
--- ============================================================
-
--- GOSSIP_BUTTON_TYPE_OPTION = 3 (Blizzard constant)
-local GOSSIP_BUTTON_TYPE_OPTION = 3
-
---- Reads the actual rendered text (with color codes) from GossipFrame UI buttons.
---- C_GossipInfo.GetOptions() returns plain text, but the UI frames preserve
---- server-applied colors. This function bridges that gap.
---- @return table  Map of optionKey -> { uiText=string, hasColor=bool, hasWarning=bool }
-function SafetyEngine.GetGossipOptionUIColors()
-    local colorMap = {}
-
-    -- Guard: GossipFrame may not exist (e.g. Classic without shared templates)
-    if not (GossipFrame and GossipFrame.GreetingPanel and GossipFrame.GreetingPanel.ScrollBox) then
-        return colorMap
-    end
-
-    local scrollBox = GossipFrame.GreetingPanel.ScrollBox
-    local enumerator = scrollBox.EnumerateFrames or scrollBox.GetFrames
-    if not enumerator then return colorMap end
-
-    for _, frame in scrollBox:EnumerateFrames() do
-        local elementData = frame.GetElementData and frame:GetElementData()
-        if elementData and elementData.buttonType == GOSSIP_BUTTON_TYPE_OPTION and elementData.info then
-            local info = elementData.info
-            local optionKey = info.gossipOptionID or info.orderIndex
-            if optionKey then
-                local fontString = frame.GetFontString and frame:GetFontString()
-                local uiText = fontString and fontString:GetText() or ""
-                colorMap[optionKey] = {
-                    uiText = uiText,
-                    hasColor = HasAnyColorCode(uiText),
-                    hasWarning = HasWarningColorCode(uiText),
-                }
-            end
-        end
-    end
-
-    return colorMap
-end
-
--- ============================================================
--- Comprehensive Validation
--- ============================================================
-
-function SafetyEngine.ValidateInteraction(options, uiColors)
-    if not options or #options == 0 then
-        return true, "no options available"
-    end
-
-    -- uiColors: map of optionKey -> { uiText, hasColor, hasWarning }
-    -- When provided, use real UI text for color checks instead of API text
-    -- (API text from C_GossipInfo.GetOptions() is always plain, no color codes).
-    uiColors = uiColors or {}
-
-    -- Single pass: whitelist/warning/color checks merged with blacklist/safe-count
-    -- to halve the number of iterations over the options table.
-    local coloredCount = 0
-    local safeCount = 0
-    local availableCount = 0
-
-    for _, option in ipairs(options) do
-        -- Whitelisted options are always safe — skip all other checks.
-        if SafetyEngine.IsWhitelisted(option) then
-            return false, "whitelisted option found"
-        end
-
-        if SafetyEngine.OptionIsAvailable(option) then
-            availableCount = availableCount + 1
-
-            if option.name then
-                local optionKey = option.gossipOptionID or option.orderIndex
-                local uiInfo = optionKey and uiColors[optionKey]
-
-                -- Red/orange warning text: halt immediately.
-                -- Check UI frame text first (authoritative), fall back to API text.
-                if uiInfo and uiInfo.hasWarning then
-                    DebugSafety("HALT: warning color in UI text: " .. (uiInfo.uiText or option.name))
-                    return true, "warning_color_text"
-                elseif HasWarningColorCode(option.name) then
-                    DebugSafety("HALT: warning color in API text: " .. option.name)
-                    return true, "warning_color_text"
-                end
-
-                -- Track any server-colored option (blue, highlight, etc.)
-                if (uiInfo and uiInfo.hasColor) or HasAnyColorCode(option.name) then
-                    coloredCount = coloredCount + 1
-                end
-            end
-
-            if not SafetyEngine.IsBlacklisted(option) then
-                safeCount = safeCount + 1
-            end
-        end
-    end
-
-    -- Two+ colored options: ambiguous, player must pick
-    if coloredCount >= 2 then
-        DebugSafety("HALT: " .. coloredCount .. " server-colored options require manual selection")
-        return true, "multiple_important_options"
-    end
-
-    if availableCount > 0 and safeCount == 0 then
-        return true, "all options unsafe"
-    end
-
-    return false, "passed"
+-- Clear selection history (NPC changed or gossip closed).
+function SafetyEngine.ClearSelections()
+    wipe(selectionHistory)
 end
 
 -- ============================================================

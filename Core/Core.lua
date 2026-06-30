@@ -40,6 +40,16 @@ function JustQuest.Core.GetModule(name)
     return modules[name] and modules[name].instance or nil
 end
 
+-- Returns a memoized accessor for a module, replacing the per-engine
+-- lazy GetX()/moduleCache boilerplate. Resolves on first successful lookup.
+function JustQuest.Core.ModuleGetter(name)
+    local cached
+    return function()
+        cached = cached or JustQuest.Core.GetModule(name)
+        return cached
+    end
+end
+
 -- Topological sort for dependency resolution
 local function ResolveDependencies()
     local sorted = {}
@@ -261,14 +271,8 @@ local function OnStateRecoveryNeeded(reason)
         services.SafeCall(gossipEngine.OnGossipClosed)
     end
     
-    if services.CancelScheduled then
-        services.CancelScheduled("content_repump")
-        services.CancelScheduled("gossip_show")
-        services.CancelScheduled("quest_greeting")
-        services.CancelScheduled("quest_processing_timeout")
-        services.CancelScheduled("teleport_recovery")
-        services.CancelScheduled("state_recovery_resume")
-        services.CancelScheduled("confirm_timeout")
+    if services.CancelAutomationTimers then
+        services.CancelAutomationTimers()
     end
     
     if services.Debug then
@@ -307,11 +311,10 @@ local function OnModifierStateChanged(_, down)
             services.RestoreAutomationFrames()
         end
         
-        -- Cancel coalesced timers that fire BEFORE StartProcessing (IsBusy() would miss them)
-        if services and services.CancelScheduled then
-            services.CancelScheduled("gossip_show")
-            services.CancelScheduled("quest_greeting")
-            services.CancelScheduled("content_repump")
+        -- Manual takeover: cancel all pending automation timers, including ones
+        -- that fire BEFORE StartProcessing (IsBusy() would miss those).
+        if services and services.CancelAutomationTimers then
+            services.CancelAutomationTimers()
         end
         
         if safety and safety.IsBusy and safety.IsBusy() then

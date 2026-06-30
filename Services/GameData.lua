@@ -167,6 +167,11 @@ function GameData.ExtractItemInfo(itemLink)
         isPet = isPet,
         isToy = isToy,
         isCollectible = isMount or isPet or isToy,
+        -- Body-armor type (cloth/leather/mail/plate = 1/2/3/4); nil for non-armor
+        -- and for generic armor (rings/cloaks/necks/trinkets, subclass 0).
+        armorSubclass = (classID == IC.ARMOR and subclassID and subclassID >= 1 and subclassID <= 4)
+                        and subclassID or nil,
+        isWeapon = classID == IC.WEAPON,
     }
 end
 
@@ -403,13 +408,6 @@ function GameData.FormatMoney(copper)
     end
     
     return result
-end
-
--- ============================================================
--- Initialization
--- ============================================================
-
-function GameData.Initialize()
 end
 
 -- ============================================================

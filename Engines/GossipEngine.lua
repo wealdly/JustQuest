@@ -4,21 +4,20 @@ local ADDON_NAME, JustQuest = ...
 
 local GossipEngine = {}
 
--- Module cache (lazy initialization)
-local moduleCache = {}
+-- Memoized module accessors
+local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
+local GetServices     = JustQuest.Core.ModuleGetter("Services")
 
-local function GetSafetyEngine()
-    if not moduleCache.SafetyEngine then
-        moduleCache.SafetyEngine = JustQuest.Core.GetModule("SafetyEngine")
-    end
-    return moduleCache.SafetyEngine
-end
-
-local function GetServices()
-    if not moduleCache.Services then
-        moduleCache.Services = JustQuest.Core.GetModule("Services")
-    end
-    return moduleCache.Services
+-- UnitGUID("npc") returns a "secret value" under addon taint (11.x+), and
+-- comparing it with ==/~= raises an error that aborts the whole pass. Compare
+-- through pcall and treat an uncomparable (secret) pair as the SAME npc, so
+-- automation continues instead of crashing. Per-NPC loop protection still has
+-- chain-depth + time-decay as a backstop. Truthiness checks (if not guid) are
+-- unaffected and stay inline.
+local function rawEq(a, b) return a == b end
+local function SameNPC(a, b)
+    local ok, equal = pcall(rawEq, a, b)
+    return (not ok) or equal
 end
 
 -- ============================================================
@@ -43,7 +42,7 @@ function GossipEngine.IsInFailedCooldown()
     if not state.failedGossipNPC then return false end
 
     local currentNPC = UnitGUID and UnitGUID("npc")
-    if not currentNPC or currentNPC ~= state.failedGossipNPC then return false end
+    if not currentNPC or not SameNPC(currentNPC, state.failedGossipNPC) then return false end
 
     local FAILED_GOSSIP_TTL = 5.0
     if (GetTime() - state.failedGossipTime) >= FAILED_GOSSIP_TTL then
@@ -160,9 +159,8 @@ local function SelectOption(option, safetyEngine, services)
 
     if not success then return false end
 
-    local guid = services and services.SafeCall(UnitGUID, "npc")
-    if guid and safetyEngine then
-        safetyEngine.MarkSelection(guid, option.gossipOptionID or option.orderIndex)
+    if safetyEngine then
+        safetyEngine.MarkSelection(option.gossipOptionID or option.orderIndex)
     end
 
     if services and services.ScheduleContentCheck then
@@ -178,9 +176,8 @@ end
 -- ============================================================
 
 local function TrySelectSafeOption(option, safetyEngine, services, numAvailable)
-    local guid = services.SafeCall(UnitGUID, "npc")
     local optionID = option.gossipOptionID or option.orderIndex
-    if safetyEngine.ShouldSkipRepeat(guid, optionID, numAvailable) then return false end
+    if safetyEngine.ShouldSkipRepeat(optionID, numAvailable) then return false end
     if safetyEngine.IsBlacklisted(option) then return false end
     if not SelectOption(option, safetyEngine, services) then return false end
     state.failedGossipNPC = nil
@@ -221,17 +218,17 @@ local function HandleGossip(skipPreChecks)
 
     local currentNPC = services.SafeCall(UnitGUID, "npc")
     if not currentNPC then return false end
-    if state.expectedGUID and state.expectedGUID ~= currentNPC then return false end
+    if state.expectedGUID and not SameNPC(state.expectedGUID, currentNPC) then return false end
 
-    if state.lastNPC ~= currentNPC then
+    if not SameNPC(state.lastNPC, currentNPC) then
         state.chainDepth = 0
         state.automationHalted = false
         state.lastNPC = currentNPC
         state.failedGossipNPC = nil
         state.failedGossipTime = 0
         state.failedGossipOptions = 0
-        if safetyEngine.ClearNPCSelection then
-            safetyEngine.ClearNPCSelection(currentNPC)
+        if safetyEngine.ClearSelections then
+            safetyEngine.ClearSelections()
         end
     end
 
@@ -256,24 +253,18 @@ local function HandleGossip(skipPreChecks)
         return false
     end
 
-    -- Split options into two categories:
-    --   available  = interactable right now (status Available or AlreadyComplete)
-    --   pending    = present on NPC but not yet clickable (Unavailable / Locked)
-    --                used to anticipate what will appear as automation progresses
+    -- Interactable options right now (status Available or AlreadyComplete).
     local available = {}
-    local pending   = {}
     for _, option in ipairs(allOptions) do
         if safetyEngine.OptionIsAvailable(option) then
             available[#available + 1] = option
-        elseif safetyEngine.OptionIsPending(option) then
-            pending[#pending + 1] = option
         end
     end
 
     -- Anti-loop: fingerprint against the TOTAL option count so any server-side
     -- state change (a locked option unlocking, etc.) resets the cooldown
     local FAILED_GOSSIP_TTL = 5.0
-    if state.failedGossipNPC == currentNPC and
+    if SameNPC(state.failedGossipNPC, currentNPC) and
        state.failedGossipOptions == #allOptions and
        (GetTime() - state.failedGossipTime) < FAILED_GOSSIP_TTL then
         safetyEngine.EndProcessing("failed_gossip_cooldown")
@@ -285,115 +276,68 @@ local function HandleGossip(skipPreChecks)
         return false
     end
 
-    -- Single service option: select directly, bypassing cost/keyword checks
-    if #available == 1 and IsServiceOption(available[1]) then
-        local option = available[1]
-        local guid = services.SafeCall(UnitGUID, "npc")
-        local optionID = option.gossipOptionID or option.orderIndex
-        if not safetyEngine.ShouldSkipRepeat(guid, optionID, 1) then
-            if SelectOption(option, safetyEngine, services) then
-                safetyEngine.EndProcessing("option_selected")
-                return true
-            end
-        end
-        safetyEngine.EndProcessing("no_safe_options")
-        return false
-    end
-
-    -- Filter out service options (vendor, trainer, binder, etc.) when mixed with
-    -- regular gossip/quest options. Only halt if ALL options are services.
-    if #available > 1 then
-        local nonService = {}
-        for _, option in ipairs(available) do
-            if not IsServiceOption(option) then
-                nonService[#nonService + 1] = option
-            end
-        end
-        if #nonService > 0 then
-            available = nonService
-        else
-            return halt("all_service_options")
-        end
-    end
-
-    -- NOTE: selectOptionWhenOnlyOption == false is NOT a reliable signal for
-    -- "player must choose between activities". Blizzard sets it to false on most
-    -- regular gossip options by default. Genuine activity/branching choices are
-    -- caught by downstream safety: colored text halt (2+ colored options in
-    -- ValidateInteraction), blacklist, and repeat protection.
-
-    -- Extract actual color codes from UI frame buttons.
-    -- C_GossipInfo.GetOptions() returns plain text — colors only live in UI frames.
-    local uiColors = safetyEngine.GetGossipOptionUIColors and safetyEngine.GetGossipOptionUIColors() or {}
-
-    -- WHITELIST: Highest priority (bypasses all safety except repeat protection)
-    for _, option in ipairs(available) do
-        if safetyEngine.IsWhitelisted(option) then
-            local guid = services.SafeCall(UnitGUID, "npc")
-            local optionID = option.gossipOptionID or option.orderIndex
-            if not safetyEngine.ShouldSkipRepeat(guid, optionID, #available) then
-                if SelectOption(option, safetyEngine, services) then
-                    safetyEngine.EndProcessing("whitelisted_option_selected")
-                    return true
-                end
-            end
-        end
-    end
-
-    -- SAFETY VALIDATION (uses UI-extracted colors for reliable color detection)
-    local shouldHalt, reason = safetyEngine.ValidateInteraction(available, uiColors)
-    if shouldHalt then
-        return halt(reason)
-    end
-
-    -- Time-based chain depth decay: if no gossip activity for longer than
-    -- the repeat window, reset depth. Handles cases where the gossip frame
-    -- stays open across quest interactions without GOSSIP_CLOSED firing.
+    -- Chain-depth accounting (anti-loop) — every auto-selection counts, with a
+    -- time-decay reset so a frame left open across quest interactions recovers.
     local chainDecayTime = JustQuest.Constants.TIMING.GOSSIP_REPEAT_WINDOW or 1.5
     if state.lastChainIncrement > 0 and (GetTime() - state.lastChainIncrement) > chainDecayTime then
         state.chainDepth = 0
         state.automationHalted = false
     end
     state.lastChainIncrement = GetTime()
-
     state.chainDepth = state.chainDepth + 1
-    local valid, chainReason = safetyEngine.ValidateChainDepth(state.chainDepth)
-    if not valid then
+    local validDepth, chainReason = safetyEngine.ValidateChainDepth(state.chainDepth)
+    if not validDepth then
         return halt(chainReason)
     end
 
-    -- QUEST PRIORITY: prefer quest-flagged gossip options over plain gossip
+    -- PRIORITY 1 — WHITELIST: user-explicit, the escape hatch for multi-option
+    -- filler. Bypasses service/quest gating, but not blacklist/repeat protection.
     for _, option in ipairs(available) do
-        if IsQuestOption(option) and TrySelectSafeOption(option, safetyEngine, services, #available) then
+        if safetyEngine.IsWhitelisted(option)
+           and TrySelectSafeOption(option, safetyEngine, services, #available) then
+            safetyEngine.EndProcessing("whitelisted_option_selected")
+            return true
+        end
+    end
+
+    -- PRIORITY 2 — QUEST OPTIONS: gossip entries flagged as quest-linked
+    -- (QuestLabelPrepend flag / quest type / questStartItemID — multiple signals
+    -- for cross-content coverage). Safe to take at any option count; the quest
+    -- itself is gated by QUEST_DETAIL safety.
+    for _, option in ipairs(available) do
+        if IsQuestOption(option)
+           and TrySelectSafeOption(option, safetyEngine, services, #available) then
             safetyEngine.EndProcessing("quest_option_selected", true)
             return true
         end
     end
 
-    -- COLORED TEXT PRIORITY: server-colored options (blue text in UI) signal
-    -- quest-related content — select them regardless of option count.
-    for _, option in ipairs(available) do
-        local optionKey = option.gossipOptionID or option.orderIndex
-        local uiInfo = optionKey and uiColors[optionKey]
-        if uiInfo and uiInfo.hasColor and not uiInfo.hasWarning
-           and TrySelectSafeOption(option, safetyEngine, services, #available) then
-            safetyEngine.EndProcessing("colored_option_selected")
+    -- PRIORITY 3 — SINGLE SERVICE STEP (Blizzard-exact): exactly one option that
+    -- Blizzard marks auto-selectable (selectOptionWhenOnlyOption, with an icon
+    -- fallback for older content), with no quests pending and no forced menu.
+    -- This is the "filler step to a merchant/trainer" case; multi-step chains
+    -- resolve one GOSSIP_SHOW at a time. Mirrors GossipFrameShared.HandleShow().
+    local npcHasQuests = (C_GossipInfo.GetNumAvailableQuests and C_GossipInfo.GetNumAvailableQuests() or 0) > 0
+                      or (C_GossipInfo.GetNumActiveQuests and C_GossipInfo.GetNumActiveQuests() or 0) > 0
+    local forceGossip = C_GossipInfo.ForceGossip and C_GossipInfo.ForceGossip() or false
+
+    if #available == 1 and IsServiceOption(available[1])
+       and not npcHasQuests and not forceGossip then
+        if TrySelectSafeOption(available[1], safetyEngine, services, 1) then
+            safetyEngine.EndProcessing("service_step_selected")
             return true
         end
     end
 
-    -- No quest content to automate: remaining options are plain gossip with no
-    -- quest flags or colored text indicators. Skip automation to avoid
-    -- interacting with non-quest dialog that may have gameplay consequences.
+    -- Nothing auto-selectable: a genuine multi-option menu or non-whitelisted
+    -- gossip. Leave it for the player. Fingerprint the unchanged menu so repeated
+    -- pumps don't loop on it.
     if services.Debug then
-        services.Debug("Gossip", "No quest-indicated options found — skipping plain gossip")
+        services.Debug("Gossip", "No auto-selectable option (whitelist/quest/single-service) — leaving for manual")
     end
-
-    -- Record failure to prevent infinite retry loops
-    local guid = services.SafeCall(UnitGUID, "npc")
-    state.failedGossipNPC     = guid
+    state.failedGossipNPC     = currentNPC
     state.failedGossipTime    = GetTime()
-    state.failedGossipOptions = #allOptions  -- total fingerprint, not just interactable count
+    state.failedGossipOptions = #allOptions
 
     safetyEngine.EndProcessing("no_safe_options")
     return false
@@ -421,7 +365,7 @@ function GossipEngine.OnGossipShow(skipPreChecks)
     state.lastShowTime = GetTime()
 
     local currentGUID = services.SafeCall(UnitGUID, "npc")
-    if not state.expectedGUID or state.expectedGUID ~= currentGUID then
+    if not state.expectedGUID or not SameNPC(state.expectedGUID, currentGUID) then
         state.expectedGUID = currentGUID
     end
 
@@ -474,8 +418,8 @@ function GossipEngine.OnGossipClosed()
     state.failedGossipOptions = 0
 
     local safetyEngine = GetSafetyEngine()
-    if safetyEngine and safetyEngine.CleanupRecentSelections then
-        safetyEngine.CleanupRecentSelections()
+    if safetyEngine and safetyEngine.ClearSelections then
+        safetyEngine.ClearSelections()
     end
 
     -- DON'T reset state or workflow if BUSY — a quest was likely selected from
@@ -484,6 +428,10 @@ function GossipEngine.OnGossipClosed()
     -- DispatchContent/repumps see IDLE and start new processing mid-turn-in.
     -- If truly stuck, SafetyEngine's periodic recovery handles it (1-4s).
     if not (safetyEngine and safetyEngine.IsBusy()) then
+        -- Terminal close: stop every pending automation timer (one set).
+        if services and services.CancelAutomationTimers then
+            services.CancelAutomationTimers()
+        end
         local questEngine = JustQuest.Core.GetModule("QuestEngine")
         if questEngine and questEngine.ResetWorkflow then
             questEngine.ResetWorkflow()
@@ -511,6 +459,11 @@ function GossipEngine.OnTargetChanged()
     state.failedGossipNPC = nil
     state.failedGossipTime = 0
     state.failedGossipOptions = 0
+
+    -- New target: drop any pending automation timers from the previous NPC.
+    if services and services.CancelAutomationTimers then
+        services.CancelAutomationTimers()
+    end
 end
 
 -- ============================================================

@@ -56,6 +56,25 @@ function Services.CancelScheduled(key)
     end
 end
 
+-- One-shot automation-flow timers, cancelled together at terminal points
+-- (manual takeover, state recovery, gossip close, target change) so every
+-- teardown path stops the same complete set instead of a remembered subset.
+-- Deliberately EXCLUDES the persistent recovery nets (safety_stuck_state_recovery,
+-- container_periodic_scan), the post-automation container scans, and the LFG
+-- subsystem — those must keep running across a teardown.
+local AUTOMATION_TIMERS = {
+    "content_repump", "gossip_show", "quest_greeting",
+    "quest_processing_timeout", "deferred_onquestlog_update",
+    "reward_data_retry", "reward_select_fallback",
+    "state_recovery_resume", "cancel_cinematic",
+}
+
+function Services.CancelAutomationTimers()
+    for _, key in ipairs(AUTOMATION_TIMERS) do
+        Services.CancelScheduled(key)
+    end
+end
+
 function Services.ScheduleRepeating(key, interval, fn, ...)
     if not key or not fn then 
         return 
@@ -89,27 +108,6 @@ function Services.SafeCall(func, ...)
         return nil
     end
     return result
-end
-
-function Services.SafeCallWithRetry(func, maxRetries, ...)
-    if not func then return nil end
-    maxRetries = maxRetries or 3
-    
-    for attempt = 1, maxRetries do
-        local success, result = pcall(func, ...)
-        if success then
-            return result
-        end
-        
-        if attempt < maxRetries then
-            Services.Debug("Retry", string.format("Attempt %d/%d failed", attempt, maxRetries))
-        end
-        
-        -- No artificial delay — WoW API is already server-throttled
-    end
-    
-    Services.Debug("Retry", string.format("All %d attempts failed", maxRetries))
-    return nil
 end
 
 function Services.GetEnumValue(enumName, key)

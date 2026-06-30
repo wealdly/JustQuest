@@ -21,6 +21,9 @@ local PrintQuickExitDebug
 local CloseQuickExitWindows
 local SuppressQuickExitWindows
 local SaveQuickExitButtonPosition
+-- Forward-declared: defined below but referenced by earlier functions.
+local GetConfigModule
+local ShowQuickExitResult
 
 local quickExitSavedPVEAlpha
 local quickExitSavedPVEMouseEnabled
@@ -68,7 +71,7 @@ local function ApplyInitialQuickExitPosition()
     MarkQuickExitPositionInitialized()
 end
 
-local function GetConfigModule()
+function GetConfigModule()
     return JustQuest.Core.GetModule("Config")
 end
 
@@ -141,7 +144,7 @@ local function QueueResetInstanceAfterExit(services)
     end)
 end
 
-local function ShowQuickExitResult(message, color)
+function ShowQuickExitResult(message, color)
     if quickExitResultShown then
         return
     end

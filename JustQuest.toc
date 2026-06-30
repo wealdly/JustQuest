@@ -38,6 +38,3 @@ Engines\ContainerEngine.lua
 # User Interface
 Interface\ConfigUI.lua
 Interface\LFGQuickStart.lua
-
-# Debug Tools (optional)
-Debug\ContainerValidator.lua

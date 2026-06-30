@@ -363,10 +363,15 @@ function Config.InspectCurrentFrame()
     local services = JustQuest.Core.GetModule("Services")
     local safeCall = services and services.SafeCall or function(f, ...) return f and f(...) end
     
-    -- NPC Information
+    -- NPC Information. UnitGUID/UnitName can return "secret" values under taint
+    -- (11.x+) that throw on concatenation; render them defensively.
+    local function safeStr(v, fallback)
+        local ok, s = pcall(function() return v and ("" .. v) or fallback end)
+        return ok and s or "secret"
+    end
     local npcGUID = safeCall(UnitGUID, "npc")
     local npcName = safeCall(UnitName, "npc")
-    print("|cffffcc00NPC:|r " .. (npcName or "None") .. " |cff888888(" .. (npcGUID or "no GUID") .. ")|r")
+    print("|cffffcc00NPC:|r " .. safeStr(npcName, "None") .. " |cff888888(" .. safeStr(npcGUID, "no GUID") .. ")|r")
     
     -- Processing State
     local safety = JustQuest.Core.GetModule("SafetyEngine")

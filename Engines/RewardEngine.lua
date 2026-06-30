@@ -4,36 +4,11 @@ local ADDON_NAME, JustQuest = ...
 
 local RewardEngine = {}
 
--- Module cache (lazy initialization)
-local moduleCache = {}
-
-local function GetServices()
-    if not moduleCache.Services then
-        moduleCache.Services = JustQuest.Core.GetModule("Services")
-    end
-    return moduleCache.Services
-end
-
-local function GetConfig()
-    if not moduleCache.Config then
-        moduleCache.Config = JustQuest.Core.GetModule("Config")
-    end
-    return moduleCache.Config
-end
-
-local function GetSafetyEngine()
-    if not moduleCache.SafetyEngine then
-        moduleCache.SafetyEngine = JustQuest.Core.GetModule("SafetyEngine")
-    end
-    return moduleCache.SafetyEngine
-end
-
-local function GetGameData()
-    if not moduleCache.GameData then
-        moduleCache.GameData = JustQuest.Core.GetModule("GameData")
-    end
-    return moduleCache.GameData
-end
+-- Memoized module accessors
+local GetServices     = JustQuest.Core.ModuleGetter("Services")
+local GetConfig       = JustQuest.Core.ModuleGetter("Config")
+local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
+local GetGameData     = JustQuest.Core.ModuleGetter("GameData")
 
 -- ============================================================
 -- Reward Processing State
@@ -206,7 +181,7 @@ function RewardEngine.SelectReward(choiceIndex)
 
     services.Debug("Rewards", "Selecting reward: " .. tostring(choiceIndex or "default"))
     
-    services.SafeCallWithRetry(GetQuestReward, 3, choiceIndex)
+    services.SafeCall(GetQuestReward, choiceIndex)
     JustQuest._stats.getRewardCalls = (JustQuest._stats.getRewardCalls or 0) + 1
     JustQuest._lastProcessingTime = GetTime()
 
@@ -575,7 +550,37 @@ end
 -- Smart Selection Logic
 -- ============================================================
 
+-- Narrow body-armor choices to the highest type the player can actually wear.
+-- Armor proficiency is "your type and everything below it", so the highest USABLE
+-- armor subclass (cloth<leather<mail<plate) is exactly the class-appropriate piece
+-- — no class table needed, and it tracks level (a warrior pre-40 keeps mail until
+-- plate becomes usable). Non-armor choices (weapons, rings, cloaks, trinkets, necks)
+-- are left untouched: weapon suitability is spec/stat based, not a proficiency
+-- ladder, so those fall through to Pawn/ilvl scoring below.
+local function PreferHighestArmorType(choices)
+    local best = 0
+    for _, c in ipairs(choices) do
+        if c and c.armorSubclass and c.canUse ~= false and c.armorSubclass > best then
+            best = c.armorSubclass
+        end
+    end
+    if best == 0 then return choices end  -- no wearable body armor in this set
+
+    local filtered = {}
+    for _, c in ipairs(choices) do
+        -- Drop usable body armor below the player's best wearable type.
+        if not (c and c.armorSubclass and c.armorSubclass < best) then
+            filtered[#filtered + 1] = c
+        end
+    end
+    return filtered
+end
+
 function RewardEngine.SelectSmartChoice(choices)
+    -- Class-appropriate armor first: a plate class never auto-picks the cloth/
+    -- leather/mail version of a reward when plate is offered and usable.
+    choices = PreferHighestArmorType(choices)
+
     local usableChoices = {}
     local significantChoices = {}
     local unknownCollectibles = {}
@@ -804,9 +809,6 @@ function RewardEngine.ResetProcessingFlag()
     if services and services.CancelScheduled then
         services.CancelScheduled("reward_data_retry")
     end
-end
-
-function RewardEngine.Initialize()
 end
 
 -- ============================================================
