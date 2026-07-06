@@ -68,7 +68,7 @@ local function ForEachBagItem()
                 for slotID = 1, numSlots do
                     local infoSuccess, info = pcall(C_Container.GetContainerItemInfo, bagID, slotID)
                     if infoSuccess and info and info.itemID then
-                        coroutine.yield(bagID, slotID, info.itemID)
+                        coroutine.yield(bagID, slotID, info)
                     end
                 end
             end
@@ -247,10 +247,10 @@ local function CleanupStaleLocks()
     lastCleanupTime = currentTime
     
     local validItems = {}
-    for bagID, slotID, itemID in ForEachBagItem() do
-        validItems[GetContainerKey(bagID, slotID, itemID)] = true
+    for bagID, slotID, info in ForEachBagItem() do
+        validItems[GetContainerKey(bagID, slotID, info.itemID)] = true
     end
-    
+
     local cleaned = 0
     for key, lockTime in pairs(containerLockState) do
         local isStale = not validItems[key] or (currentTime - lockTime > LOCK_TIMEOUT)
@@ -282,13 +282,15 @@ local function CleanupFailedContainers()
     return cleaned
 end
 
-local function ProcessContainerItem(bagID, slotID, itemID, currentTime, skippedLocked, skippedRetry)
+local function ProcessContainerItem(bagID, slotID, info, currentTime, skippedLocked, skippedRetry)
     -- Check state FIRST — quest/gossip automation may start between scan and here
     local safety = GetSafetyEngine()
     if not (safety and safety.IsState("IDLE")) then
         return nil, skippedLocked, skippedRetry
     end
-    
+
+    local itemID = info.itemID
+
     if IsDangerousContainer(itemID) then
         return false, skippedLocked, skippedRetry
     end
@@ -298,14 +300,6 @@ local function ProcessContainerItem(bagID, slotID, itemID, currentTime, skippedL
     end
     
     local containerKey = GetContainerKey(bagID, slotID, itemID)
-    local info = C_Container.GetContainerItemInfo(bagID, slotID)
-    
-    if not info then
-        ClearContainerFailure(containerKey)
-        ClearContainerLock(containerKey)
-        return false, skippedLocked, skippedRetry
-    end
-    
     local itemStart, itemDuration, itemEnable = C_Container.GetContainerItemCooldown(bagID, slotID)
     if itemStart and itemStart > 0 and itemDuration and itemDuration > 0 then
         return false, skippedLocked, skippedRetry + 1
@@ -381,36 +375,12 @@ function ContainerEngine.OpenBagContainers()
         return 
     end
     
-    -- Don't open containers during quest/gossip automation —
-    -- UseContainerItem() can taint protected frames via hardware event
+    -- Don't open containers during quest/gossip automation — UseContainerItem()
+    -- can taint protected frames via hardware event. Stuck-BUSY cleanup is owned
+    -- by SafetyEngine's periodic recovery (state-aware, honors the currency
+    -- prompt); here we just wait it out.
     local safety = GetSafetyEngine()
     if safety and safety.IsBusy() then
-        local state = safety.GetState()
-        local stateTime = safety.GetStateTime()
-        
-        -- Only validate frames if stuck >5s to avoid expensive IsShown() calls on every scan
-        if stateTime > 5.0 then
-            local frameActuallyOpen = false
-            
-            if state == "QUEST" then
-                frameActuallyOpen = (QuestFrame and QuestFrame:IsShown()) or 
-                                   (QuestLogPopupDetailFrame and QuestLogPopupDetailFrame:IsShown())
-            elseif state == "GOSSIP" then
-                frameActuallyOpen = (GossipFrame and GossipFrame:IsShown())
-            elseif state == "CONFIRM" then
-                frameActuallyOpen = (StaticPopup1 and StaticPopup1:IsShown()) or
-                                   (QuestFrame and QuestFrame:IsShown()) or
-                                   (GossipFrame and GossipFrame:IsShown())
-            end
-            
-            if not frameActuallyOpen then
-                Debug(string.format("Stuck state recovery: %s for %.1fs with no frame", state, stateTime))
-                local safetyEngine = GetSafetyEngine()
-                if safetyEngine then
-                    safetyEngine.EndProcessing("container_stuck_state_recovery")
-                end
-            end
-        end
         return
     end
     
@@ -502,10 +472,10 @@ function ContainerEngine.OpenBagContainers()
     local skippedRetry = 0
     local skippedLocked = 0
     
-    for bagID, slotID, itemID in ForEachBagItem() do
+    for bagID, slotID, info in ForEachBagItem() do
         itemsFound = itemsFound + 1
         
-        local result, newSkippedLocked, newSkippedRetry = ProcessContainerItem(bagID, slotID, itemID, currentTime, skippedLocked, skippedRetry)
+        local result, newSkippedLocked, newSkippedRetry = ProcessContainerItem(bagID, slotID, info, currentTime, skippedLocked, skippedRetry)
         
         -- Update skip counters if returned
         if newSkippedLocked then skippedLocked = newSkippedLocked end

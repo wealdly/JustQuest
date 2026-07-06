@@ -67,9 +67,8 @@ local function CreateGeneralOptions()
                         type = "description",
                         name = "|cffffcc00What JustQuest Does:|r Automates quest interaction safely.\n\n" ..
                             "• Accepts and turns in quests\n" ..
-                            "• Selects quest-indicated gossip (quest flags or server-colored text)\n" ..
-                            "• Opens single service options (vendor/trainer/banker)\n" ..
-                            "• Skips plain non-quest gossip\n\n" ..
+                            "• Auto-advances gossip to reach quests (Aggressive gossip, on by default)\n" ..
+                            "• Stops for real decisions: money/coded options, blacklisted keywords, forced menus\n\n" ..
                             "Use the tabs below to tune behavior.",
                         order = 1,
                         fontSize = "medium",
@@ -465,6 +464,26 @@ local function CreateGossipOptions()
         order = 3,
         args = {
             header = { type = "header", name = "NPC Interactions", order = 1 },
+
+            aggressive = {
+                type = "toggle",
+                name = "Aggressive gossip (auto-advance to quests)",
+                desc = "Automatically clicks through gossip to reach quests: takes the first available option in ANY menu, not only quest-flagged or single-service ones.\n\n" ..
+                       "Still safe: options that cost money or need a typed code stop for you (the server intercepts them), blacklisted keywords are skipped, and holding Shift/Ctrl/Alt lets you read a menu manually.\n\n" ..
+                       "Turn OFF for conservative behavior — only quest-indicated dialog and single Blizzard-service steps are automated; other menus are left for you.",
+                width = "full",
+                order = 2,
+                get = function()
+                    local config = JustQuest.Core.GetModule("Config")
+                    local v = config and config.Get("gossip", "aggressive")
+                    if v == nil then return true end
+                    return v
+                end,
+                set = function(info, value)
+                    local config = JustQuest.Core.GetModule("Config")
+                    if config then config.Set("gossip", "aggressive", value) end
+                end,
+            },
             
 
             
@@ -472,14 +491,14 @@ local function CreateGossipOptions()
                 type = "group",
                 name = "NPC Rules (Whitelist & Blacklist)",
                 inline = true,
-                order = 2,
+                order = 3,
                 args = {
                     rulesInfo = {
                         type = "description",
                         name = "|cffffcc00Whitelist vs Blacklist:|r\n" ..
                                "• |cff00ff00Whitelist:|r Selected immediately (still respects repeat protection).\n" ..
                                "• |cffff0000Blacklist:|r Matching options are skipped; addon picks next safe option.\n\n" ..
-                               "|cffffcc00Note:|r Only quest-indicated dialog (quest flags or server-colored text) is automated. Plain gossip is skipped.\n",
+                               "|cffffcc00Note:|r With Aggressive gossip on (default), any gossip option is auto-advanced to reach quests, except forced menus and money/coded options. With it off, only quest-indicated dialog and single service steps are automated.\n",
                         order = 1, 
                         fontSize = "medium",
                     },
@@ -999,18 +1018,18 @@ local function BuildOptionsTable()
 end
 
 -- ============================================================
--- Public API
+-- Registration
 -- ============================================================
 
-function ConfigUI.ShowConfig()
-    -- Register if needed
+-- Register the options table and add it to the Blizzard AddOns settings list.
+-- Idempotent (guarded by uiCache); called at startup so JustQuest always shows
+-- in the AddOns panel, and again from ShowConfig as a safety net.
+local function EnsureRegistered()
     if not uiCache.registered and ACR then
-        local options = BuildOptionsTable()
-        ACR:RegisterOptionsTable("JustQuest", options)
+        ACR:RegisterOptionsTable("JustQuest", BuildOptionsTable())
         uiCache.registered = true
     end
-    
-    -- Add to Blizzard options if needed
+
     if not uiCache.addedToBlizz and ACD and uiCache.registered then
         uiCache.blizzFrames["JustQuest"] = ACD:AddToBlizOptions("JustQuest", "JustQuest")
         uiCache.blizzFrames["JustQuest-General"] = ACD:AddToBlizOptions("JustQuest", "General", "JustQuest", "general")
@@ -1018,17 +1037,25 @@ function ConfigUI.ShowConfig()
         uiCache.blizzFrames["JustQuest-Gossip"] = ACD:AddToBlizOptions("JustQuest", "NPCs", "JustQuest", "gossip")
         uiCache.blizzFrames["JustQuest-Containers"] = ACD:AddToBlizOptions("JustQuest", "Containers", "JustQuest", "containers")
         uiCache.blizzFrames["JustQuest-Advanced"] = ACD:AddToBlizOptions("JustQuest", "Advanced", "JustQuest", "advanced")
-        
+
         -- Add profiles panel if available
         local config = JustQuest.Core.GetModule("Config")
         local db = config and config.GetDatabase()
         if db and LibStub and LibStub("AceDBOptions-3.0", true) then
             uiCache.blizzFrames["JustQuest-Profiles"] = ACD:AddToBlizOptions("JustQuest", "Profiles", "JustQuest", "profiles")
         end
-        
+
         uiCache.addedToBlizz = true
     end
-    
+end
+
+-- ============================================================
+-- Public API
+-- ============================================================
+
+function ConfigUI.ShowConfig()
+    EnsureRegistered()
+
     -- Open the panel
     local rootFrame = uiCache.blizzFrames["JustQuest"]
     
@@ -1053,7 +1080,9 @@ end
 -- ============================================================
 
 function ConfigUI.Initialize()
-    -- Module initialization - no debug output needed (Core handles success/failure reporting)
+    -- Register at load so JustQuest appears in the Blizzard AddOns settings list
+    -- immediately, instead of only after the first /jq.
+    EnsureRegistered()
 end
 
 -- ============================================================

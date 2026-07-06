@@ -7,6 +7,7 @@ local GossipEngine = {}
 -- Memoized module accessors
 local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
 local GetServices     = JustQuest.Core.ModuleGetter("Services")
+local GetConfig       = JustQuest.Core.ModuleGetter("Config")
 
 -- UnitGUID("npc") returns a "secret value" under addon taint (11.x+), and
 -- comparing it with ==/~= raises an error that aborts the whole pass. Compare
@@ -19,6 +20,10 @@ local function SameNPC(a, b)
     local ok, equal = pcall(rawEq, a, b)
     return (not ok) or equal
 end
+
+-- Anti-loop cooldown: after a menu is left for manual selection, ignore identical
+-- re-shows (same NPC + same option count) for this long.
+local FAILED_GOSSIP_TTL = 5.0
 
 -- ============================================================
 -- State Management
@@ -44,7 +49,6 @@ function GossipEngine.IsInFailedCooldown()
     local currentNPC = UnitGUID and UnitGUID("npc")
     if not currentNPC or not SameNPC(currentNPC, state.failedGossipNPC) then return false end
 
-    local FAILED_GOSSIP_TTL = 5.0
     if (GetTime() - state.failedGossipTime) >= FAILED_GOSSIP_TTL then
         return false
     end
@@ -99,33 +103,15 @@ local function IsServiceOption(option)
     return false
 end
 
--- Returns true for gossip options flagged as quest-type (blue quest label in UI)
+-- Returns true for gossip options flagged as quest-type (Blizzard prepends a blue
+-- "(Quest)" label). Delegates to the shared detector: QuestLabelPrepend is the
+-- authoritative server-set flag, with the localized "(Quest)" option text as a
+-- fallback for odd/old content. The 12.0 GossipOptionUIInfo struct carries no
+-- type / typeLabelText / questStartItemID fields (same shape on retail and Classic
+-- content), so those older signals never populate and are not checked.
 local function IsQuestOption(option)
-    if not option then return false end
-    -- flags-based check: QuestLabelPrepend flag means Blizzard prepends "(Quest)"
-    -- in blue text on the UI button. This is the most reliable signal.
-    if option.flags and Enum and Enum.GossipOptionRecFlags
-       and Enum.GossipOptionRecFlags.QuestLabelPrepend then
-        if bit and bit.band and bit.band(option.flags, Enum.GossipOptionRecFlags.QuestLabelPrepend) ~= 0 then
-            return true
-        end
-    end
-    -- typeLabelText is set to e.g. "Quest" for quest-opening gossip entries
-    if option.typeLabelText then
-        if option.typeLabelText:lower():find("quest", 1, true) then return true end
-    end
-    -- Enum-based check (ActiveQuest / AvailableQuest / Quest, depending on client version)
-    if option.type and Enum and Enum.GossipOptionType then
-        local E = Enum.GossipOptionType
-        if (E.ActiveQuest   and option.type == E.ActiveQuest)   or
-           (E.AvailableQuest and option.type == E.AvailableQuest) or
-           (E.Quest          and option.type == E.Quest) then
-            return true
-        end
-    end
-    -- Non-zero questStartItemID also signals a quest-linked option
-    if option.questStartItemID and option.questStartItemID ~= 0 then return true end
-    return false
+    local services = GetServices()
+    return (services and services.IsQuestRelatedGossip(option)) and true or false
 end
 
 -- ============================================================
@@ -263,7 +249,6 @@ local function HandleGossip(skipPreChecks)
 
     -- Anti-loop: fingerprint against the TOTAL option count so any server-side
     -- state change (a locked option unlocking, etc.) resets the cooldown
-    local FAILED_GOSSIP_TTL = 5.0
     if SameNPC(state.failedGossipNPC, currentNPC) and
        state.failedGossipOptions == #allOptions and
        (GetTime() - state.failedGossipTime) < FAILED_GOSSIP_TTL then
@@ -300,10 +285,9 @@ local function HandleGossip(skipPreChecks)
         end
     end
 
-    -- PRIORITY 2 — QUEST OPTIONS: gossip entries flagged as quest-linked
-    -- (QuestLabelPrepend flag / quest type / questStartItemID — multiple signals
-    -- for cross-content coverage). Safe to take at any option count; the quest
-    -- itself is gated by QUEST_DETAIL safety.
+    -- PRIORITY 2 — QUEST OPTIONS: gossip entries flagged as quest-linked (server
+    -- QuestLabelPrepend flag, with a localized "(Quest)" text fallback). Safe to take
+    -- at any option count; the quest itself is gated by QUEST_DETAIL safety.
     for _, option in ipairs(available) do
         if IsQuestOption(option)
            and TrySelectSafeOption(option, safetyEngine, services, #available) then
@@ -312,28 +296,58 @@ local function HandleGossip(skipPreChecks)
         end
     end
 
-    -- PRIORITY 3 — SINGLE SERVICE STEP (Blizzard-exact): exactly one option that
-    -- Blizzard marks auto-selectable (selectOptionWhenOnlyOption, with an icon
-    -- fallback for older content), with no quests pending and no forced menu.
-    -- This is the "filler step to a merchant/trainer" case; multi-step chains
-    -- resolve one GOSSIP_SHOW at a time. Mirrors GossipFrameShared.HandleShow().
-    local npcHasQuests = (C_GossipInfo.GetNumAvailableQuests and C_GossipInfo.GetNumAvailableQuests() or 0) > 0
-                      or (C_GossipInfo.GetNumActiveQuests and C_GossipInfo.GetNumActiveQuests() or 0) > 0
+    -- The server forcing the menu (ForceGossip / ForceInteractionOnSingleChoice)
+    -- is an explicit "show the player" — a true decision — so never auto-advance
+    -- past it, in either mode.
     local forceGossip = C_GossipInfo.ForceGossip and C_GossipInfo.ForceGossip() or false
+    local config = GetConfig()
+    local aggressive = not config or config.Get("gossip", "aggressive") ~= false
 
-    if #available == 1 and IsServiceOption(available[1])
-       and not npcHasQuests and not forceGossip then
-        if TrySelectSafeOption(available[1], safetyEngine, services, 1) then
-            safetyEngine.EndProcessing("service_step_selected")
-            return true
+    if aggressive and not forceGossip then
+        -- PRIORITY 3 (aggressive, default) — TRAVERSE: advance through gossip so
+        -- quests buried behind dialog are reached without stopping the player on pure
+        -- navigation. Two passes in ONE handling (no extra round-trip): first any
+        -- NON-service option — services (vendor/trainer/banker) lead away from quests
+        -- and open a blocking frame — then services, so a pure service NPC still
+        -- fires in the same tick when that's all there is. Safety is layered and
+        -- already enforced here:
+        --   • blacklisted keywords (teleport/portal/time/campaign-skip ship by
+        --     default) are skipped by TrySelectSafeOption,
+        --   • costed/coded/otherwise-irreversible options never execute from this
+        --     call — the server intercepts them with GOSSIP_CONFIRM / GOSSIP_ENTER_CODE,
+        --     which we never auto-accept (they surface for the player), and
+        --   • repeat-TTL + chain-depth guards bound the walk, so a looping or
+        --     dead-end menu surfaces instead of spinning.
+        for pass = 1, 2 do
+            local wantService = (pass == 2)  -- pass 1: conversation options; pass 2: services
+            for _, option in ipairs(available) do
+                if IsServiceOption(option) == wantService
+                   and TrySelectSafeOption(option, safetyEngine, services, #available) then
+                    safetyEngine.EndProcessing("gossip_option_selected")
+                    return true
+                end
+            end
+        end
+    elseif not aggressive then
+        -- PRIORITY 3 (conservative) — SINGLE SERVICE STEP (Blizzard-exact): exactly
+        -- one option Blizzard marks auto-selectable (selectOptionWhenOnlyOption, with
+        -- an icon fallback), no quests pending, not forced. Mirrors HandleShow().
+        local npcHasQuests = (C_GossipInfo.GetNumAvailableQuests and C_GossipInfo.GetNumAvailableQuests() or 0) > 0
+                          or (C_GossipInfo.GetNumActiveQuests and C_GossipInfo.GetNumActiveQuests() or 0) > 0
+        if #available == 1 and IsServiceOption(available[1])
+           and not npcHasQuests and not forceGossip then
+            if TrySelectSafeOption(available[1], safetyEngine, services, 1) then
+                safetyEngine.EndProcessing("service_step_selected")
+                return true
+            end
         end
     end
 
-    -- Nothing auto-selectable: a genuine multi-option menu or non-whitelisted
-    -- gossip. Leave it for the player. Fingerprint the unchanged menu so repeated
-    -- pumps don't loop on it.
+    -- Nothing auto-selectable: a forced/true-decision menu, or (conservative mode) a
+    -- multi-option / non-whitelisted menu. Leave it for the player. Fingerprint the
+    -- unchanged menu so repeated pumps don't loop on it.
     if services.Debug then
-        services.Debug("Gossip", "No auto-selectable option (whitelist/quest/single-service) — leaving for manual")
+        services.Debug("Gossip", "No auto-selectable option — leaving for manual")
     end
     state.failedGossipNPC     = currentNPC
     state.failedGossipTime    = GetTime()

@@ -136,39 +136,39 @@ function SafetyEngine.Initialize()
     -- Periodic stuck-state recovery
     if services and services.ScheduleRepeating then
         services.ScheduleRepeating("safety_stuck_state_recovery", 1.0, function()
-            if state ~= "BUSY" then return end
-
             -- The currency-spend prompt is a deliberate, open-ended wait on the
-            -- player; its own popup handlers release the state. Never time it out.
+            -- player; its popup is the interaction surface, so leave the frame
+            -- hidden behind it and never time it out.
             if stateReason == "waiting_currency_prompt" then return end
 
-            local config = GetConfig()
-            local timeout = config and config.Get("advanced", "autoRecoveryTimeout") or JustQuest.Constants.TIMING.AUTO_RECOVERY_TIMEOUT
             local timeSinceActivity = GetTime() - (JustQuest._lastProcessingTime or 0)
             local frameOpen = services.IsInteractionFrameOpen()
 
-            -- Fast mode hides the quest/gossip frame (alpha 0) while automating.
-            -- The instant automation stalls, un-hide it so the player is never left
-            -- staring at an invisible, un-clickable window (the "walk away to
-            -- force-close it" trap) — well before the slower full reset below.
-            -- Normal steps are sub-second apart, so a >0.75s gap means stalled.
-            if timeSinceActivity > 0.75 then
+            -- Fast-mode visibility guarantee: fast mode hides the quest/gossip frame
+            -- (alpha 0) while automating. If a frame is still open after automation
+            -- has gone quiet for ~0.75s — stalled while BUSY, or settled into IDLE
+            -- with the frame left for the player (manual pick, leftover gossip) — it
+            -- must be revealed; otherwise it stays invisible and un-clickable (the
+            -- "walk away to force-close it" trap). A live drain refreshes activity
+            -- faster than this, so it stays hidden through continuing steps.
+            if frameOpen and timeSinceActivity > 0.75 then
                 services.RestoreAutomationFrames()
             end
 
-            -- Recover when the frame is already closed (fast path), OR when
-            -- automation has stalled past the full timeout even with a frame
-            -- still open. The frame-open stall is the "stuck at turn-in" case:
-            -- a missed QUEST_COMPLETE/QUEST_TURNED_IN leaves us BUSY with the
-            -- quest frame up. Recovery used to require the player to walk away
-            -- (closing the frame) before it would fire.
+            if state ~= "BUSY" then return end
+
+            local config = GetConfig()
+            local timeout = config and config.Get("advanced", "autoRecoveryTimeout") or JustQuest.Constants.TIMING.AUTO_RECOVERY_TIMEOUT
+
+            -- Recover BUSY state when the frame is already closed (fast path), OR
+            -- when automation has stalled past the full timeout even with a frame
+            -- still open (the "stuck at turn-in" case: a missed QUEST_COMPLETE/
+            -- QUEST_TURNED_IN). Repump so the still-open frame is re-processed.
             if (not frameOpen and timeSinceActivity > 1.0) or timeSinceActivity > timeout then
                 if services.Debug then
                     services.Debug("Safety", string.format("Periodic recovery: BUSY %s (%.1fs idle, frame=%s)",
                         stateReason or "?", timeSinceActivity, frameOpen and "open" or "closed"))
                 end
-                -- Repump so a still-open quest/gossip frame is re-processed
-                -- instead of sitting idle until the next event.
                 SafetyEngine.EndProcessing("periodic_stuck_recovery", true)
             end
         end)
@@ -278,6 +278,8 @@ function SafetyEngine.IsBlacklisted(option)
     if not services then return false end
 
     local cleanText = services.CleanText(option.name)
+
+    if blacklistSet[cleanText] then return true end
 
     for entry in pairs(blacklistSet) do
         if cleanText:find(entry, 1, true) then
@@ -389,10 +391,25 @@ function SafetyEngine.BeginProcessing(reason)
     return true
 end
 
+-- Reasons that mean "automation acted and CONTINUES to the next step" — in fast
+-- mode the frame stays hidden through these so it doesn't flicker visible between
+-- a turn-in and the next quest. Every other end reason (manual halt, nothing
+-- auto-selectable, recovery, currency cancel) reveals the frame: the player needs
+-- to see it because input is required or automation failed.
+local CONTINUING_REASONS = {
+    whitelisted_option_selected   = true,
+    quest_option_selected         = true,
+    service_step_selected         = true,
+    gossip_option_selected        = true,
+    quest_accept_action_complete  = true,
+    quest_turned_in               = true,
+}
+
 function SafetyEngine.EndProcessing(reason, shouldRepump)
-    -- Restore frame visibility (fast mode may have hidden frames)
+    -- Restore frame visibility unless this is a continuing step (fast mode hides
+    -- frames mid-automation; outside fast mode this is a no-op, alpha already 1).
     local services = GetServices()
-    if services and services.RestoreAutomationFrames then
+    if services and services.RestoreAutomationFrames and not CONTINUING_REASONS[reason or ""] then
         services.RestoreAutomationFrames()
     end
 

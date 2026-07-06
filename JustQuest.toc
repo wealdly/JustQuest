@@ -2,7 +2,7 @@
 ## Title: JustQuest
 ## Notes: Automates quest acceptance, turn-in, gossip selection, and reward picking
 ## Author: wealdly
-## Version: 3.1.1
+## Version: 3.2.0
 ## License: GPL-3.0-or-later
 ## IconTexture: Interface/Icons/INV_Misc_Book_09
 ## SavedVariables: JustQuestDB

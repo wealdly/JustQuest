@@ -94,9 +94,11 @@ JustQuest.Constants.TIMING = {
     CONTAINER_STALE_TIMEOUT = 120,
     CONTAINER_PERIODIC_SCAN = 30,
     
-    -- Repump backoff (not scaled)
+    -- Repump backoff (not scaled). TOTAL_TIME bounds how long a re-check keeps
+    -- polling for server data that lags behind an accept/turn-in/gossip step
+    -- (and how long legacy greeting polling waits) before giving up.
     RE_PUMP_MAX_DELAY = 0.3,
-    RE_PUMP_TOTAL_TIME = 1.0,
+    RE_PUMP_TOTAL_TIME = 1.5,
     RE_PUMP_GROWTH_FACTOR = 1.4,
 }
 
@@ -141,6 +143,7 @@ JustQuest.Constants.DEFAULTS = {
         
         gossip = {
             enabled = true,
+            aggressive = true,  -- auto-advance any gossip option to reach quests; false = conservative (quest-flagged / single Blizzard-service step only)
             whitelist = {},
             blacklist = {
                 -- Teleportation / portals (instant travel without confirmation)
@@ -181,6 +184,7 @@ JustQuest.Constants.DEFAULTS = {
             buttonY = -120,
             positionInitialized = false,
             resetInstanceOnExit = false,
+            exitGlowSeen = false,  -- glow the Exit button until first use, then stop
         },
         
         -- Auto-generated from TIMING table

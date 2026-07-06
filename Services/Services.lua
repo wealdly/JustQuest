@@ -179,31 +179,19 @@ end
 local haltThrottles = {}
 local HALT_THROTTLE_SECONDS = 10
 
+-- Friendly text for the reasons actually passed to OutputHalt(). Any reason not
+-- listed falls through to its raw slug, so keep this in sync with the OutputHalt
+-- call sites rather than accumulating unused entries.
 local HALT_REASONS = {
-    -- Safety halts
-    ["dangerous_service"] = "Dangerous service detected",
-    ["money_cost"] = "Cost required",
-    ["multiple_options"] = "Multiple choices available",
-    ["mixed_options"] = "Mixed quest/non-quest options",
-    ["blacklisted"] = "Blacklisted option",
-    ["blacklisted_quest"] = "Blacklisted quest",
-    ["quest_danger"] = "Quest has warnings",
-    ["max_depth"] = "Chain depth limit reached",
-    ["no_safe_options"] = "No safe options available",
-    ["vendor_option"] = "Vendor or service available",
-    ["multiple_choices"] = "Multiple activity options — manual selection required",
-    ["multiple_significant_rewards"] = "Multiple significant rewards — manual selection required",
-    ["legacy_greeting"] = "Legacy greeting panel detected",
-    ["colored_text"] = "Colored text requires confirmation",
-    ["warning_color_text"] = "Red/warning text in option - manual selection required",
-    ["multiple_important_options"] = "Multiple highlighted options - manual selection required",
-
-    -- Resource limits
-    ["quest_log_full"] = "Quest log is full",
-    -- Misc
-    ["modifier_held"] = "Modifier key held",
-    ["combat"] = "In combat",
-    ["interfering_frame"] = "Non-quest frame detected",
+    ["interfering_frame"]              = "Non-quest frame detected",
+    ["legacy_greeting"]               = "Legacy greeting panel detected",
+    ["max_depth"]                     = "Chain depth limit reached",
+    ["quest_log_full"]                = "Quest log is full",
+    ["quest_requires_currency"]       = "Quest requires spending currency",
+    ["quest_requires_trade_items"]    = "Quest requires trade goods or crafted items",
+    ["quest_requires_uncached_items"] = "Quest requires an item that hasn't loaded yet",
+    ["expensive_quest_requires_payment"] = "Quest turn-in costs gold",
+    ["multiple_significant_rewards"]  = "Multiple significant rewards — manual selection required",
 }
 
 function Services.OutputHalt(reason, extraInfo)
@@ -302,11 +290,41 @@ end
 
 -- Fast mode: alpha=0 while automating, restored on halt or dialog close
 
+-- True when the current gossip interaction is an actual quest giver: a quest to
+-- accept, a quest to turn in, or a quest-flagged ("(Quest)") gossip option. An
+-- in-progress quest with no turn-in here does NOT count. Fast mode uses this so it
+-- only hides the interface for quest mobs — vendor/trainer/flavor gossip stays visible.
+function Services.HasQuestGiverContent()
+    if Services.HasActionableQuestContent() then return true end
+    local options = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
+    if type(options) == "table" then
+        for _, option in ipairs(options) do
+            if Services.IsQuestRelatedGossip(option) then return true end
+        end
+    end
+    return false
+end
+
 local function FastModeSuppressFrame(frame)
     local config = JustQuest.Core.GetModule("Config")
     if not (config and config.Get(nil, "fastMode")) then return end
     if IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown() then return end
     if Services.HasInterferingFrame() then return end
+
+    -- Hide for quest mobs (offer / turn-in / quest-flagged gossip) and for pure
+    -- flavor gossip (no options) — flavor is auto-closed once open, so hiding it
+    -- first avoids a flash. QuestFrame is always a quest interaction. While BUSY
+    -- the frame is the next step of an active chain (e.g. a blue-quest gossip
+    -- chain), so hide it regardless of content even if its data hasn't populated
+    -- yet. Only a real vendor / service gossip opened on its own stays visible.
+    local safety = JustQuest.Core.GetModule("SafetyEngine")
+    if frame == GossipFrame and not (safety and safety.IsBusy()) and not Services.HasQuestGiverContent() then
+        local options = Services.SafeCall(C_GossipInfo.GetOptions)
+        if type(options) == "table" and #options > 0 then
+            return  -- service/vendor gossip with options but no quests: leave visible
+        end
+    end
+
     frame:SetAlpha(0)
 end
 
@@ -368,7 +386,9 @@ function Services.IsQuestRelatedGossip(option)
     if not option then return false end
     
     if option.flags and bit and bit.band then
-        local QUEST_FLAG = 1
+        -- QuestLabelPrepend (== 1 in GossipOptionRecFlags); use the enum, fall back
+        -- to the literal only if the enum table is somehow unavailable.
+        local QUEST_FLAG = (Enum and Enum.GossipOptionRecFlags and Enum.GossipOptionRecFlags.QuestLabelPrepend) or 1
         if bit.band(option.flags, QUEST_FLAG) ~= 0 then
             return true
         end
@@ -604,7 +624,20 @@ local function DispatchContent(reason)
     end
 
     local hasContent, contentType = Services.HasAnyActionableContent()
-    if not hasContent then return false end
+    if not hasContent then
+        -- Fast mode: a gossip window that's still open with no options and no quests
+        -- is pure flavor text. It was hidden on show, so close it instead of leaving
+        -- an invisible window lingering. A held modifier bails above at
+        -- CanAutomateBase, leaving the flavor visible to read.
+        local config = JustQuest.Core.GetModule("Config")
+        if config and config.Get(nil, "fastMode")
+           and GossipFrame and GossipFrame:IsShown()
+           and C_GossipInfo and C_GossipInfo.CloseGossip then
+            Services.Debug("Services", "Fast mode: auto-closing flavor gossip (no options)")
+            Services.SafeCall(C_GossipInfo.CloseGossip)
+        end
+        return false
+    end
 
     local questEngine = JustQuest.Core.GetModule("QuestEngine")
     local gossipEngine = JustQuest.Core.GetModule("GossipEngine")
@@ -634,6 +667,32 @@ local function DispatchContent(reason)
     return true
 end
 
+-- Post-action re-checks fire on a fixed short delay, but the follow-up quest/gossip
+-- they look for arrives on a server round-trip that can lag past it. DispatchContent
+-- returns true as soon as it finds and routes actionable content; while it keeps
+-- returning false AND an NPC interaction frame is still open, the data simply hasn't
+-- landed yet — so re-check with backoff until it does or a short deadline passes.
+-- This turns each single-shot re-check into a bounded poll, so a lagging accept /
+-- turn-in / gossip step that unlocks a new stage isn't dropped. (A menu that IS
+-- present but left for the player still makes DispatchContent return true, so those
+-- are not re-polled.) A newer event calls back through here and cancels the key,
+-- pre-empting the chain; CancelAutomationTimers also stops it on teardown.
+local function ScheduleDispatch(key, delay, reason, deadline)
+    Services.ScheduleOnce(key, delay, function()
+        if DispatchContent(reason) then return end
+        if not deadline or GetTime() >= deadline then return end
+        if not Services.IsInteractionFrameOpen() then return end
+
+        local maxDelay = JustQuest.Constants.TIMING.RE_PUMP_MAX_DELAY or 0.3
+        local growth   = JustQuest.Constants.TIMING.RE_PUMP_GROWTH_FACTOR or 1.4
+        ScheduleDispatch(key, math.min((delay or 0.15) * growth, maxDelay), reason, deadline)
+    end)
+end
+
+local function RepumpDeadline()
+    return GetTime() + (JustQuest.Constants.TIMING.RE_PUMP_TOTAL_TIME or 1.0)
+end
+
 -- Unified content check scheduler — replaces all repump/trigger timer variants
 function Services.ScheduleContentCheck(delay, reason)
     delay = delay or 0.1
@@ -644,9 +703,7 @@ function Services.ScheduleContentCheck(delay, reason)
     Services.CancelScheduled("gossip_show")
     Services.CancelScheduled("quest_greeting")
 
-    Services.ScheduleOnce("content_repump", delay, function()
-        DispatchContent(reason)
-    end)
+    ScheduleDispatch("content_repump", delay, reason, RepumpDeadline())
 end
 
 -- Legacy compatibility wrapper
@@ -665,9 +722,7 @@ function Services.CoalescedGossipPass(tag, delay)
         Services.CancelScheduled("quest_greeting")
     end
 
-    Services.ScheduleOnce(tag, delay or 0.1, function()
-        DispatchContent("coalesced_" .. tag)
-    end)
+    ScheduleDispatch(tag, delay or 0.1, "coalesced_" .. tag, RepumpDeadline())
 end
 
 -- ============================================================

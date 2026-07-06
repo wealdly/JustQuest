@@ -532,6 +532,58 @@ local function EnsureQuickExitVisibilityWatcher()
     end)
 end
 
+-- Soft pulsing glow sized to the button. GlowEmitterFactory's templates use
+-- fixed-size end-cap art tuned for large buttons (Enter World / Save Changes), which
+-- pinches into an hourglass on a 56×22 button — so we roll a stretchable glow from
+-- the classic proc-glow texture instead (still native, but geometry we control).
+-- Shown until first use so new users can spot the button, then dismissed + remembered.
+local function EnsureQuickExitGlow()
+    if not quickExitButton then return nil end
+    if quickExitButton.jqGlow then return quickExitButton.jqGlow end
+
+    -- ButtonHilight-Square fills its own bounds (no invisible inset margin to guess),
+    -- and SetAllPoints binds it to the button's exact rectangle, so the glow matches
+    -- the button 1:1 at any size and can't mis-fit. ARTWORK sits above the backdrop
+    -- but below the OVERLAY label, so "Exit" stays crisp.
+    local glow = quickExitButton:CreateTexture(nil, "ARTWORK")
+    glow:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    glow:SetBlendMode("ADD")
+    glow:SetVertexColor(1.0, 0.82, 0.25)  -- warm gold
+    glow:SetAllPoints(quickExitButton)
+    glow:Hide()
+
+    local ag = glow:CreateAnimationGroup()
+    ag:SetLooping("REPEAT")
+    local up = ag:CreateAnimation("Alpha")
+    up:SetFromAlpha(0.3); up:SetToAlpha(1.0); up:SetDuration(0.85); up:SetOrder(1); up:SetSmoothing("IN_OUT")
+    local down = ag:CreateAnimation("Alpha")
+    down:SetFromAlpha(1.0); down:SetToAlpha(0.3); down:SetDuration(0.85); down:SetOrder(2); down:SetSmoothing("IN_OUT")
+
+    glow.anim = ag
+    quickExitButton.jqGlow = glow
+    return glow
+end
+
+local function ShowQuickExitGlow()
+    local config = GetConfigModule()
+    if config and config.Get("lfgQuickExit", "exitGlowSeen") then return end
+    local glow = EnsureQuickExitGlow()
+    if glow then
+        glow:Show()
+        glow.anim:Play()
+    end
+end
+
+local function DismissQuickExitGlow()
+    local glow = quickExitButton and quickExitButton.jqGlow
+    if glow then
+        glow.anim:Stop()
+        glow:Hide()
+    end
+    local config = GetConfigModule()
+    if config then config.Set("lfgQuickExit", "exitGlowSeen", true) end
+end
+
 local function CreateQuickExitButton()
     if quickExitButton then
         return
@@ -590,6 +642,7 @@ local function CreateQuickExitButton()
             return
         end
 
+        DismissQuickExitGlow()
         PrepareQuickExitOnMouseDown()
     end)
 
@@ -616,6 +669,7 @@ local function CreateQuickExitButton()
         GameTooltip:Hide()
     end)
 
+    ShowQuickExitGlow()
     EnsureQuickExitVisibilityWatcher()
     UpdateQuickExitButtonVisibility()
 end

@@ -260,6 +260,11 @@ function RewardEngine.GetHighestVendorValue(numChoices)
 end
 
 function RewardEngine.HaltForManualSelection(reason)
+    -- Release the processing guard: the money/trivial/simple halt paths return
+    -- through here without otherwise clearing it, which would block the next
+    -- quest's reward auto-selection until a later QUEST_TURNED_IN reset it.
+    processingReward = false
+
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
     
