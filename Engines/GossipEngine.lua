@@ -32,14 +32,12 @@ local FAILED_GOSSIP_TTL = 5.0
 local state = {
     chainDepth = 0,
     confirmationPending = false,
-    lastNPC = nil,
     automationHalted = false,
     lastShowTime = 0,
     expectedGUID = nil,
     failedGossipNPC = nil,
     failedGossipTime = 0,
     failedGossipOptions = 0,
-    lastChainIncrement = 0,
 }
 
 -- Check if we're in failed gossip cooldown for current NPC
@@ -161,9 +159,9 @@ end
 -- Option Safety Helper
 -- ============================================================
 
-local function TrySelectSafeOption(option, safetyEngine, services, numAvailable)
+local function TrySelectSafeOption(option, safetyEngine, services)
     local optionID = option.gossipOptionID or option.orderIndex
-    if safetyEngine.ShouldSkipRepeat(optionID, numAvailable) then return false end
+    if safetyEngine.ShouldSkipRepeat(optionID) then return false end
     if safetyEngine.IsBlacklisted(option) then return false end
     if not SelectOption(option, safetyEngine, services) then return false end
     state.failedGossipNPC = nil
@@ -205,18 +203,6 @@ local function HandleGossip(skipPreChecks)
     local currentNPC = services.SafeCall(UnitGUID, "npc")
     if not currentNPC then return false end
     if state.expectedGUID and not SameNPC(state.expectedGUID, currentNPC) then return false end
-
-    if not SameNPC(state.lastNPC, currentNPC) then
-        state.chainDepth = 0
-        state.automationHalted = false
-        state.lastNPC = currentNPC
-        state.failedGossipNPC = nil
-        state.failedGossipTime = 0
-        state.failedGossipOptions = 0
-        if safetyEngine.ClearSelections then
-            safetyEngine.ClearSelections()
-        end
-    end
 
     -- Respect automation halt if no quest content exists
     if state.automationHalted then
@@ -261,14 +247,11 @@ local function HandleGossip(skipPreChecks)
         return false
     end
 
-    -- Chain-depth accounting (anti-loop) — every auto-selection counts, with a
-    -- time-decay reset so a frame left open across quest interactions recovers.
-    local chainDecayTime = JustQuest.Constants.TIMING.GOSSIP_REPEAT_WINDOW or 1.5
-    if state.lastChainIncrement > 0 and (GetTime() - state.lastChainIncrement) > chainDecayTime then
-        state.chainDepth = 0
-        state.automationHalted = false
-    end
-    state.lastChainIncrement = GetTime()
+    -- Chain-depth accounting (anti-loop) — every auto-selection counts toward the
+    -- cap. Reset only on real progress (NPC change, quest accept/turn-in, gossip
+    -- close), NOT on a time gap: a menu that re-shows after each successful select
+    -- with a round-trip slower than any decay window would reset the counter every
+    -- cycle and walk without bound (the slow-loop the player sees "sometimes").
     state.chainDepth = state.chainDepth + 1
     local validDepth, chainReason = safetyEngine.ValidateChainDepth(state.chainDepth)
     if not validDepth then
@@ -279,7 +262,7 @@ local function HandleGossip(skipPreChecks)
     -- filler. Bypasses service/quest gating, but not blacklist/repeat protection.
     for _, option in ipairs(available) do
         if safetyEngine.IsWhitelisted(option)
-           and TrySelectSafeOption(option, safetyEngine, services, #available) then
+           and TrySelectSafeOption(option, safetyEngine, services) then
             safetyEngine.EndProcessing("whitelisted_option_selected")
             return true
         end
@@ -290,7 +273,7 @@ local function HandleGossip(skipPreChecks)
     -- at any option count; the quest itself is gated by QUEST_DETAIL safety.
     for _, option in ipairs(available) do
         if IsQuestOption(option)
-           and TrySelectSafeOption(option, safetyEngine, services, #available) then
+           and TrySelectSafeOption(option, safetyEngine, services) then
             safetyEngine.EndProcessing("quest_option_selected", true)
             return true
         end
@@ -303,7 +286,21 @@ local function HandleGossip(skipPreChecks)
     local config = GetConfig()
     local aggressive = not config or config.Get("gossip", "aggressive") ~= false
 
-    if aggressive and not forceGossip then
+    -- A menu holding a blacklisted option (teleport/portal/campaign-skip ship by
+    -- default) is a real decision, not navigation filler. Traversing past it by taking
+    -- some OTHER option answers it for the player by omission, and in fast mode the menu
+    -- is hidden, so they never see the option was offered at all. Treat it like
+    -- ForceGossip: stop and surface the menu. The whitelist and quest-flagged passes
+    -- above already ran — those are explicit intent and quest content, not guesswork.
+    local hasUnsafeOption = false
+    for _, option in ipairs(available) do
+        if safetyEngine.IsBlacklisted(option) then
+            hasUnsafeOption = true
+            break
+        end
+    end
+
+    if aggressive and not forceGossip and not hasUnsafeOption then
         -- PRIORITY 3 (aggressive, default) — TRAVERSE: advance through gossip so
         -- quests buried behind dialog are reached without stopping the player on pure
         -- navigation. Two passes in ONE handling (no extra round-trip): first any
@@ -311,18 +308,19 @@ local function HandleGossip(skipPreChecks)
         -- and open a blocking frame — then services, so a pure service NPC still
         -- fires in the same tick when that's all there is. Safety is layered and
         -- already enforced here:
-        --   • blacklisted keywords (teleport/portal/time/campaign-skip ship by
-        --     default) are skipped by TrySelectSafeOption,
+        --   • a blacklisted keyword (teleport/portal/time/campaign-skip ship by
+        --     default) anywhere in the menu stops the traverse before it starts — see
+        --     hasUnsafeOption above — and TrySelectSafeOption blocks the option itself,
         --   • costed/coded/otherwise-irreversible options never execute from this
         --     call — the server intercepts them with GOSSIP_CONFIRM / GOSSIP_ENTER_CODE,
         --     which we never auto-accept (they surface for the player), and
-        --   • repeat-TTL + chain-depth guards bound the walk, so a looping or
-        --     dead-end menu surfaces instead of spinning.
+        --   • once-per-conversation repeat + chain-depth guards bound the walk, so a
+        --     looping or dead-end menu surfaces instead of spinning.
         for pass = 1, 2 do
             local wantService = (pass == 2)  -- pass 1: conversation options; pass 2: services
             for _, option in ipairs(available) do
                 if IsServiceOption(option) == wantService
-                   and TrySelectSafeOption(option, safetyEngine, services, #available) then
+                   and TrySelectSafeOption(option, safetyEngine, services) then
                     safetyEngine.EndProcessing("gossip_option_selected")
                     return true
                 end
@@ -336,18 +334,22 @@ local function HandleGossip(skipPreChecks)
                           or (C_GossipInfo.GetNumActiveQuests and C_GossipInfo.GetNumActiveQuests() or 0) > 0
         if #available == 1 and IsServiceOption(available[1])
            and not npcHasQuests and not forceGossip then
-            if TrySelectSafeOption(available[1], safetyEngine, services, 1) then
+            if TrySelectSafeOption(available[1], safetyEngine, services) then
                 safetyEngine.EndProcessing("service_step_selected")
                 return true
             end
         end
     end
 
-    -- Nothing auto-selectable: a forced/true-decision menu, or (conservative mode) a
-    -- multi-option / non-whitelisted menu. Leave it for the player. Fingerprint the
-    -- unchanged menu so repeated pumps don't loop on it.
+    -- Nothing auto-selectable: a forced/true-decision menu, a menu holding an option we
+    -- refuse to click, or (conservative mode) a multi-option / non-whitelisted menu.
+    -- Leave it for the player — EndProcessing below un-hides the frame, since
+    -- "no_safe_options" is not a continuing reason. Fingerprint the unchanged menu so
+    -- repeated pumps don't loop on it.
     if services.Debug then
-        services.Debug("Gossip", "No auto-selectable option — leaving for manual")
+        services.Debug("Gossip", hasUnsafeOption
+            and "Menu holds an unsafe option — surfacing for manual choice"
+            or "No auto-selectable option — leaving for manual")
     end
     state.failedGossipNPC     = currentNPC
     state.failedGossipTime    = GetTime()
@@ -424,7 +426,6 @@ function GossipEngine.OnGossipClosed()
     -- Gossip-specific state cleanup (always safe — gossip IS closed)
     state.chainDepth = 0
     state.confirmationPending = false
-    state.lastNPC = nil
     state.automationHalted = false
     state.expectedGUID = nil
     state.failedGossipNPC = nil
@@ -487,7 +488,6 @@ end
 function GossipEngine.OnDisable()
     state.chainDepth = 0
     state.confirmationPending = false
-    state.lastNPC = nil
     state.automationHalted = false
 end
 
@@ -498,14 +498,12 @@ end
 function GossipEngine.ResetChainState()
     state.chainDepth = 0
     state.automationHalted = false
-    state.lastChainIncrement = 0
 end
 
 function GossipEngine.GetStateInfo()
     return {
         chainDepth = state.chainDepth,
         confirmationPending = state.confirmationPending,
-        lastNPC = state.lastNPC,
         automationHalted = state.automationHalted,
         lastShowTime = state.lastShowTime,
         expectedGUID = state.expectedGUID,

@@ -23,10 +23,13 @@ Core\Config.lua
 # Shared Services
 Services\Services.lua
 Services\GameData.lua
+Services\PawnScoring.lua
+Services\PawnStatInjection.lua
 
 # Database Tables
 Database\BlockedContent.lua
 Database\ContainerDB.lua
+Database\ContainerData.lua
 
 # Processing Engines
 Engines\SafetyEngine.lua
@@ -34,7 +37,10 @@ Engines\RewardEngine.lua
 Engines\QuestEngine.lua
 Engines\GossipEngine.lua
 Engines\ContainerEngine.lua
+Engines\DelveEngine.lua
+Engines\GearAdvisor.lua
 
 # User Interface
 Interface\ConfigUI.lua
+Interface\GearToast.lua
 Interface\LFGQuickStart.lua

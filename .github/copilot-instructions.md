@@ -11,11 +11,11 @@ JustQuest.toc (load order)
 ├── Core/Config.lua       → AceDB wrapper, Get()/Set() API
 ├── Services/Services.lua → Timers (AceTimer), SafeCall, Debug, frame helpers
 ├── Services/GameData.lua → Item/quest data lookups
-├── Engines/SafetyEngine  → STATE MACHINE (IDLE/QUEST/GOSSIP/HALT), whitelist/blacklist
+├── Engines/SafetyEngine  → STATE MACHINE (IDLE/BUSY), whitelist/blacklist
 ├── Engines/QuestEngine   → Quest accept/turnin, GOSSIP_SHOW entry point
 ├── Engines/GossipEngine  → Dialog selection with safety validation
 ├── Engines/RewardEngine  → Quest reward analysis and selection
-└── Engines/ContainerEngine → Auto-open reward containers
+└── Engines/ContainerEngine → Auto-open containers (live info.hasLoot; mode: list/safe/all)
 ```
 
 **State Flow:** `WoW Event → Core dispatch → SafetyEngine.SetState() → Engine handler → SafetyEngine.EndProcessing()`
@@ -79,9 +79,11 @@ Services.CancelScheduled("QuestEngine_retry")
 - Key function: `HasAnyColorCode(text)`
 
 ### Repeat Protection Details
-- `ShouldSkipRepeat(npcGUID, optionID, totalOptions)` prevents selecting same option twice in TTL window
+- `ShouldSkipRepeat(optionID)` prevents auto-selecting the same option twice in one NPC
+  interaction — each option is auto-selectable at most once per interaction (tracked in
+  `selectedOptions`, cleared on NPC change / gossip close), so a menu that keeps re-showing
+  is left for the player instead of looping (no time-window/TTL anymore)
 - Essential for preventing infinite loops in story gossip chains
-- TTL reduced for single-option menus (likely "back" navigation)
 - Even whitelisted options respect repeat protection (prevents spam)
 
 ### ForceGossip Protection

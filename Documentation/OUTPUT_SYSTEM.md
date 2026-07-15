@@ -72,19 +72,13 @@ Commands like `/jq status`, `/jq inspect` that generate formatted reports:
 - **Reason:** These are intentional user-requested reports with custom formatting
 - **Pattern:** Color-coded sections with headers/dividers
 
-### 2. Diagnostic Tools
-Development/debugging tools that generate validation reports:
-- **File:** `Debug/ContainerValidator.lua`
-- **Reason:** Detailed diagnostic output for database validation
-- **Pattern:** Formatted reports with statistics and issue lists
-
-### 3. Critical Fallbacks
+### 2. Critical Fallbacks
 When Services module is unavailable (initialization failure):
 - **File:** `Engines/QuestEngine.lua`, `Core/Core.lua`
 - **Reason:** Services.Error() not available, need direct print
 - **Pattern:** Red error message explaining module failure
 
-### 4. Third-Party Libraries
+### 3. Third-Party Libraries
 AceConfig and other libraries have their own print() calls:
 - **Files:** `Libs/AceConfig-3.0/**/*.lua`
 - **Reason:** External library code, not modified

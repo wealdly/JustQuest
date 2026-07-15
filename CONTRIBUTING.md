@@ -34,7 +34,7 @@ Key modules:
 - `Engines/*`: behavior and automation logic.
 
 State safety model:
-- `IDLE`, `QUEST`, `GOSSIP`, `HALT`
+- `IDLE` / `BUSY`
 - Start with `SafetyEngine.SetState(...)`
 - End with `SafetyEngine.EndProcessing(...)`
 

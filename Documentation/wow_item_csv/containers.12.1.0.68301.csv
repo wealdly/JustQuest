@@ -1,0 +1,2262 @@
+ItemID,Name,Locked,LockID,LockKind,ClassID,SubclassID,ExpansionID,StartQuestID
+4632,Ornate Bronze Lockbox,1,5,?,15,0,0,0
+4633,Heavy Bronze Lockbox,1,23,?,15,0,0,0
+4634,Iron Lockbox,1,24,?,15,0,0,0
+4636,Strong Iron Lockbox,1,60,?,15,0,0,0
+4637,Steel Lockbox,1,61,?,15,0,0,0
+4638,Reinforced Steel Lockbox,1,3240,?,15,0,0,0
+5335,A Sack of Coins,0,0,,15,0,0,0
+5738,Covert Ops Pack,0,0,,15,0,0,0
+5758,Mithril Lockbox,1,3240,?,15,0,0,0
+5759,Thorium Lockbox,1,3240,?,15,0,0,0
+5760,Eternium Lockbox,1,3240,?,15,0,0,0
+5857,Gnome Prize Box,0,0,,12,0,0,0
+5858,Goblin Prize Box,0,0,,12,0,0,0
+6307,Message in a Bottle,0,0,,15,0,0,0
+6351,Dented Crate,0,0,,15,4,0,0
+6352,Waterlogged Crate,0,0,,15,4,0,0
+6353,Small Chest,0,0,,15,0,0,0
+6354,Small Locked Chest,1,5,?,15,0,0,0
+6355,Sturdy Locked Chest,1,24,?,15,0,0,0
+6356,Battered Chest,0,0,,15,0,0,0
+6357,Sealed Crate,0,0,,15,4,0,0
+6643,Bloated Smallfish,0,0,,15,4,0,0
+6645,Bloated Mud Snapper,0,0,,15,4,0,0
+6647,Bloated Catfish,0,0,,15,4,0,0
+6715,Ruined Jumper Cables,0,0,,0,0,0,0
+6755,A Small Container of Gems,0,0,,15,0,0,0
+6827,Box of Supplies,0,0,,15,0,0,0
+7190,Scorched Rocket Boots,0,0,,15,0,0,0
+7209,Tazan's Satchel,1,319,?,15,0,0,0
+7870,Thaumaturgy Vessel Lockbox,0,0,,12,0,0,0
+8049,Gnarlpine Necklace,0,0,,12,0,0,0
+8366,Bloated Trout,0,0,,15,4,0,0
+8484,Gadgetzan Water Co. Care Package,0,0,,15,0,0,0
+8647,Egg Crate,0,0,,12,0,0,0
+9265,Cuergo's Hidden Treasure,0,0,,12,0,0,0
+9276,Pirate's Footlocker,0,0,,15,0,0,0
+9363,Sparklematic-Wrapped Box,0,0,,15,0,0,0
+9539,Box of Rations,0,0,,15,0,0,0
+9540,Box of Spells,0,0,,15,0,0,0
+9541,Box of Goodies,0,0,,15,0,0,0
+10456,A Bulging Coin Purse,0,0,,15,0,0,0
+10479,Kovic's Trading Satchel,0,0,,15,0,0,0
+10569,Hoard of the Black Dragonflight,0,0,,15,0,0,0
+10695,Box of Empty Vials,0,0,,15,0,0,0
+10752,Emerald Encrusted Chest,0,0,,15,0,0,0
+10773,Hakkari Urn,0,0,,15,0,0,0
+10834,Felhound Tracker Kit,0,0,,15,0,0,0
+11024,Evergreen Herb Casing,0,0,,12,0,0,0
+11107,A Small Pack,0,0,,12,0,0,0
+11422,Goblin Engineer's Renewal Gift,0,0,,15,0,0,0
+11423,Gnome Engineer's Renewal Gift,0,0,,15,0,0,0
+11568,Torwa's Pouch,0,0,,15,0,0,0
+11617,Eridan's Supplies,0,0,,12,0,0,0
+11883,A Dingy Fanny Pack,0,0,,15,0,0,0
+11887,Cenarion Circle Cache,0,0,,15,0,0,0
+11912,Package of Empty Ooze Containers,0,0,,15,0,0,0
+11937,Fat Sack of Coins,0,0,,15,0,0,0
+11938,Sack of Gems,0,0,,15,0,0,0
+11955,Bag of Empty Ooze Containers,0,0,,15,0,0,0
+11966,Small Sack of Coins,0,0,,15,0,0,0
+12033,Thaurissan Family Jewels,1,600,?,15,0,0,0
+12122,Kum'isha's Junk,0,0,,15,0,0,0
+12339,Vaelan's Gift,0,0,,12,0,0,0
+12849,Demon Kissed Sack,0,0,,12,0,0,0
+13247,Quartermaster Zigris' Footlocker,0,0,,15,0,0,0
+13874,Heavy Crate,0,0,,15,4,0,0
+13875,Ironbound Locked Chest,1,61,?,15,0,0,0
+13881,Bloated Redgill,0,0,,15,4,0,0
+13891,Bloated Salmon,0,0,,15,4,0,0
+13918,Reinforced Locked Chest,1,599,?,15,0,0,0
+15102,Un'Goro Tested Sample,0,0,,15,0,0,0
+15103,Corrupt Tested Sample,0,0,,15,0,0,0
+15699,Small Brown-Wrapped Package,0,0,,15,0,0,0
+15876,Nathanos' Chest,0,0,,12,0,0,0
+15902,A Crazy Grab Bag,0,0,,15,0,0,0
+16783,Bundle of Reports,0,0,,12,0,0,0
+16882,Battered Junkbox,1,5,?,15,0,0,0
+16883,Worn Junkbox,1,24,?,15,0,0,0
+16884,Sturdy Junkbox,1,61,?,15,0,0,0
+16885,Heavy Junkbox,1,599,?,15,0,0,0
+17685,Smokywood Pastures Sampler,0,0,,15,0,0,0
+17726,Smokywood Pastures Special Gift,0,0,,15,0,0,0
+17727,Smokywood Pastures Gift Pack,0,0,,15,0,0,0
+17962,Blue Sack of Gems,0,0,,15,0,0,0
+17963,Green Sack of Gems,0,0,,15,0,0,0
+17964,Gray Sack of Gems,0,0,,15,0,0,0
+17965,Yellow Sack of Gems,0,0,,15,0,0,0
+17969,Red Sack of Gems,0,0,,15,0,0,0
+18636,Ruined Jumper Cables XL,0,0,,0,0,0,0
+18804,Lord Grayson's Satchel,0,0,,12,0,0,0
+19035,Lard's Special Picnic Basket,0,0,,15,0,0,0
+19150,Sentinel Basic Care Package,0,0,,0,8,0,0
+19151,Sentinel Standard Care Package,0,0,,0,8,0,0
+19152,Sentinel Advanced Care Package,0,0,,0,8,0,0
+19153,Outrider Advanced Care Package,0,0,,0,8,0,0
+19154,Outrider Basic Care Package,0,0,,0,8,0,0
+19155,Outrider Standard Care Package,0,0,,0,8,0,0
+19296,Greater Darkmoon Prize,0,0,,0,8,0,0
+19297,Lesser Darkmoon Prize,0,0,,0,8,0,0
+19298,Minor Darkmoon Prize,0,0,,0,8,0,0
+19422,Darkmoon Faire Fortune,0,0,,12,0,0,0
+19425,Mysterious Lockbox,0,0,,0,8,0,0
+20228,Defiler's Advanced Care Package,0,0,,0,8,0,0
+20229,Defiler's Basic Care Package,0,0,,0,8,0,0
+20230,Defiler's Standard Care Package,0,0,,0,8,0,0
+20231,Arathor Advanced Care Package,0,0,,0,8,0,0
+20233,Arathor Basic Care Package,0,0,,0,8,0,0
+20236,Arathor Standard Care Package,0,0,,0,8,0,0
+20393,Treat Bag,0,0,,15,0,-3,0
+20469,Decoded True Believer Clippings,0,0,,15,0,0,0
+20601,Sack of Spoils,0,0,,15,0,0,0
+20602,Chest of Spoils,0,0,,15,0,0,0
+20603,Bag of Spoils,0,0,,15,0,0,0
+20708,Tightly Sealed Trunk,0,0,,15,0,0,0
+20766,Slimy Bag,0,0,,15,0,0,0
+20767,Scum Covered Bag,0,0,,15,0,0,0
+20768,Oozing Bag,0,0,,15,0,0,0
+20805,Followup Logistics Assignment,0,0,,15,0,0,0
+20808,Combat Assignment,0,0,,15,0,0,0
+20809,Tactical Assignment,0,0,,15,0,0,0
+21042,Narain's Special Kit,0,0,,15,0,0,0
+21113,Watertight Trunk,0,0,,15,0,0,0
+21131,Followup Combat Assignment,0,0,,15,0,0,0
+21132,Logistics Assignment,0,0,,15,0,0,0
+21133,Followup Tactical Assignment,0,0,,15,0,0,0
+21150,Iron Bound Trunk,0,0,,15,0,0,0
+21156,Scarab Bag,0,0,,15,0,0,0
+21162,Bloated Oily Blackmouth,0,0,,15,4,0,0
+21164,Bloated Rockscale Cod,0,0,,15,4,0,0
+21191,Carefully Wrapped Present,0,0,,15,0,-3,0
+21216,Smokywood Pastures Extra-Special Gift,0,0,,15,0,0,0
+21228,Mithril Bound Trunk,0,0,,15,0,0,0
+21243,Bloated Mightfish,0,0,,15,4,0,0
+21266,Logistics Assignment,0,0,,15,0,0,0
+21270,Gently Shaken Gift,0,0,,15,0,-3,0
+21271,Gently Shaken Gift,0,0,,15,0,-3,0
+21310,Gaily Wrapped Present,0,0,,15,0,-3,0
+21315,Smokywood Satchel,0,0,,15,0,-3,0
+21327,Ticking Present,0,0,,15,0,-3,0
+21363,Festive Gift,0,0,,15,0,-3,0
+21386,Followup Logistics Assignment,0,0,,15,0,0,0
+21509,Ahn'Qiraj War Effort Supplies,0,0,,15,0,0,0
+21510,Ahn'Qiraj War Effort Supplies,0,0,,15,0,0,0
+21511,Ahn'Qiraj War Effort Supplies,0,0,,15,0,0,0
+21512,Ahn'Qiraj War Effort Supplies,0,0,,15,0,0,0
+21513,Ahn'Qiraj War Effort Supplies,0,0,,15,0,0,0
+21528,Colossal Bag of Loot,0,0,,15,0,0,0
+21640,Lunar Festival Fireworks Pack,0,0,,15,0,-3,0
+21740,Small Rocket Recipes,0,0,,0,8,0,0
+21741,Cluster Rocket Recipes,0,0,,0,8,0,0
+21742,Large Rocket Recipes,0,0,,0,8,0,0
+21743,Large Cluster Rocket Recipes,0,0,,0,8,0,0
+21746,Lucky Red Envelope,0,0,,0,8,-3,0
+21812,Box of Chocolates,0,0,,15,0,-3,0
+21975,Pledge of Adoration: Stormwind,0,0,,15,3,-3,0
+21979,Gift of Adoration: Darnassus,0,0,,15,3,-3,0
+21980,Gift of Adoration: Ironforge,0,0,,15,3,-3,0
+21981,Gift of Adoration: Stormwind,0,0,,15,3,-3,0
+22137,Ysida's Satchel,0,0,,15,0,0,0
+22154,Pledge of Adoration: Ironforge,0,0,,15,3,-3,0
+22155,Pledge of Adoration: Darnassus,0,0,,15,3,-3,0
+22156,Pledge of Adoration: Orgrimmar,0,0,,15,3,-3,0
+22157,Pledge of Adoration: Undercity,0,0,,15,3,-3,0
+22158,Pledge of Adoration: Thunder Bluff,0,0,,15,3,-3,0
+22159,Pledge of Friendship: Darnassus,0,0,,15,3,-3,0
+22160,Pledge of Friendship: Ironforge,0,0,,15,3,-3,0
+22161,Pledge of Friendship: Orgrimmar,0,0,,15,3,-3,0
+22162,Pledge of Friendship: Thunder Bluff,0,0,,15,3,-3,0
+22163,Pledge of Friendship: Undercity,0,0,,15,3,-3,0
+22164,Gift of Adoration: Orgrimmar,0,0,,15,3,-3,0
+22165,Gift of Adoration: Thunder Bluff,0,0,,15,3,-3,0
+22166,Gift of Adoration: Undercity,0,0,,15,3,-3,0
+22167,Gift of Friendship: Darnassus,0,0,,15,3,-3,0
+22168,Gift of Friendship: Ironforge,0,0,,15,3,-3,0
+22169,Gift of Friendship: Orgrimmar,0,0,,15,3,-3,0
+22170,Gift of Friendship: Stormwind,0,0,,15,3,-3,0
+22171,Gift of Friendship: Thunder Bluff,0,0,,15,3,-3,0
+22172,Gift of Friendship: Undercity,0,0,,15,3,-3,0
+22178,Pledge of Friendship: Stormwind,0,0,,15,3,-3,0
+22320,Mux's Quality Goods,0,0,,15,0,0,0
+22568,Sealed Craftsman's Writ,0,0,,15,0,0,0
+22648,Hive'Ashi Dossier,0,0,,15,0,0,0
+22649,Hive'Regal Dossier,0,0,,15,0,0,0
+22650,Hive'Zora Dossier,0,0,,15,0,0,0
+22746,Buccaneer's Uniform,0,0,,15,0,0,0
+23022,Curmudgeon's Payoff,0,0,,15,0,0,0
+23224,Summer Gift Package,0,0,,0,8,0,0
+23846,Nolkai's Box,0,0,,15,0,0,0
+23921,Bulging Sack of Silver,0,0,,15,0,0,0
+24336,Fireproof Satchel,0,0,,15,0,0,0
+24402,Package of Identified Plants,0,0,,15,0,0,0
+25419,Unmarked Bag of Gems,0,0,,15,0,0,0
+25422,Bulging Sack of Gems,0,0,,15,0,0,0
+25423,Bag of Premium Gems,0,0,,15,0,0,0
+25424,Gem-Stuffed Envelope,0,0,,15,0,0,0
+27446,Mr. Pinchy's Gift,0,0,,15,0,0,0
+27481,Heavy Supply Crate,0,0,,15,4,0,0
+27511,Inscribed Scrollcase,0,0,,7,11,0,0
+27513,Curious Crate,0,0,,7,11,0,0
+28499,Arakkoa Hunter's Supplies,0,0,,15,0,0,0
+29569,Strong Junkbox,1,1665,?,15,0,0,0
+30260,Voren'thal's Package,0,0,,0,8,0,0
+30320,Bundle of Nether Spikes,0,0,,15,0,0,0
+30650,Dertrok's Wand Case,0,0,,12,0,0,0
+31408,Offering of the Sha'tar,0,0,,15,0,0,0
+31522,Primal Mooncloth Supplies,0,0,,12,0,0,0
+31800,Outcast's Cache,0,0,,15,0,0,0
+31952,Khorium Lockbox,1,1666,?,15,0,0,0
+31955,Arelion's Knapsack,0,0,,15,0,0,0
+32064,Protectorate Treasure Cache,0,0,,15,0,0,0
+32462,Morthis' Materials,0,0,,15,0,0,0
+32561,Tier 5 Arrow Box,0,0,,15,0,0,0
+32624,Large Iron Metamorphosis Geode,0,0,,15,0,0,0
+32625,Small Iron Metamorphosis Geode,0,0,,15,0,0,0
+32626,Large Copper Metamorphosis Geode,0,0,,15,0,0,0
+32627,Small Copper Metamorphosis Geode,0,0,,15,0,0,0
+32628,Large Silver Metamorphosis Geode,0,0,,15,0,0,0
+32629,Large Gold Metamorphosis Geode,0,0,,15,0,0,0
+32630,Small Gold Metamorphosis Geode,0,0,,15,0,0,0
+32631,Small Silver Metamorphosis Geode,0,0,,15,0,0,0
+32724,Sludge-Covered Object,0,0,,15,0,0,0
+32777,Kronk's Grab Bag,0,0,,15,0,0,0
+32835,Ogri'la Care Package,0,0,,15,0,0,0
+33045,Renn's Supplies,0,0,,12,0,0,0
+33844,Barrel of Fish,0,0,,15,0,0,0
+33857,Crate of Meat,0,0,,15,0,0,0
+33926,Sealed Scroll Case,0,0,,0,8,0,0
+33928,Hollowed Bone Decanter,0,0,,0,8,0,0
+34077,Crudely Wrapped Gift,0,0,,0,8,0,0
+34119,Black Conrad's Treasure,0,0,,15,0,0,0
+34426,Winter Veil Gift,0,0,,15,0,-3,0
+34548,Cache of the Shattered Sun,0,0,,15,0,0,0
+34583,Aldor Supplies Package,0,0,,0,8,0,0
+34584,Scryer Supplies Package,0,0,,0,8,0,0
+34585,Scryer Supplies Package,0,0,,0,8,0,0
+34587,Aldor Supplies Package,0,0,,0,8,0,0
+34592,Aldor Supplies Package,0,0,,0,8,0,0
+34593,Scryer Supplies Package,0,0,,0,8,0,0
+34594,Scryer Supplies Package,0,0,,0,8,0,0
+34595,Aldor Supplies Package,0,0,,0,8,0,0
+34846,Black Sack of Gems,0,0,,15,0,0,0
+34863,Bag of Fishing Treasures,0,0,,15,0,0,0
+34871,Crafty's Sack,0,0,,15,0,0,0
+35232,Shattered Sun Supplies,0,0,,0,8,0,0
+35286,Bloated Giant Sunfish,0,0,,15,4,0,0
+35313,Bloated Barbed Gill Trout,0,0,,12,0,0,0
+35348,Bag of Fishing Treasures,0,0,,15,0,0,0
+35512,Pocket Full of Snow,0,0,,0,8,0,0
+35745,Box of Treasure,0,0,,15,0,0,0
+35792,Mage Hunter Personal Effects,0,0,,15,0,0,0
+35945,Brilliant Glass,0,0,,0,8,1,0
+37168,Mysterious Tarot,0,0,,7,11,0,0
+37586,Handful of Treats,0,0,,15,0,-3,0
+38539,Sack of Gold,0,0,,15,0,0,0
+39418,Ornately Jeweled Box,0,0,,15,0,0,0
+39883,Cracked Egg,0,0,,0,8,0,0
+41426,Magically Wrapped Gift,0,0,,0,8,0,0
+41888,Small Velvet Bag,0,0,,15,0,0,0
+42953,Strange Envelope,1,1807,?,7,11,0,0
+43346,Large Satchel of Spoils,0,0,,15,0,0,0
+43347,Satchel of Spoils,0,0,,15,0,0,0
+43504,Winter Veil Gift,0,0,,15,0,-3,0
+43556,Patroller's Pack,0,0,,15,0,0,0
+43575,Reinforced Junkbox,1,1667,?,15,0,0,0
+43622,Froststeel Lockbox,1,1812,?,15,0,0,0
+43624,Titanium Lockbox,1,1813,?,15,0,0,0
+44113,Small Spice Bag,0,0,,0,8,0,0
+44142,Strange Tarot,0,0,,7,11,0,0
+44161,Arcane Tarot,0,0,,7,11,0,0
+44163,Shadowy Tarot,0,0,,7,11,0,0
+44475,Reinforced Crate,0,0,,7,11,0,0
+44663,Abandoned Adventurer's Satchel,0,0,,15,0,0,0
+44700,Brooding Darkwater Clam,0,0,,7,11,0,0
+44718,Ripe Disgusting Jar,0,0,,0,8,0,0
+44751,Hyldnir Spoils,0,0,,0,8,0,0
+44943,Icy Prism,0,0,,0,8,2,0
+44951,Box of Bombs,0,0,,0,0,2,0
+45328,Bloated Slippery Eel,0,0,,12,0,0,0
+45724,Champion's Purse,0,0,,15,0,0,0
+45875,Sack of Ulduar Spoils,0,0,,15,0,0,0
+45878,Large Sack of Ulduar Spoils,0,0,,15,0,0,0
+45986,Tiny Titanium Lockbox,1,1813,?,15,0,0,0
+46007,Bag of Fishing Treasures,0,0,,15,0,0,0
+46110,Alchemist's Cache,0,0,,15,0,0,0
+46740,Winter Veil Gift,0,0,,15,0,-3,0
+46809,Bountiful Cookbook,0,0,,9,0,-3,0
+46810,Bountiful Cookbook,0,0,,9,0,-3,0
+46812,Northrend Mystery Gem Pouch,0,0,,15,0,0,0
+49294,Ashen Sack of Gems,0,0,,15,0,0,0
+49369,Red Blizzcon Bag,0,0,,15,0,0,0
+49631,Standard Apothecary Serving Kit,0,0,,0,8,-3,0
+49909,Box of Chocolates,0,0,,15,0,-3,0
+49926,Brazie's Black Book of Secrets,0,0,,15,0,0,0
+50160,Lovely Dress Box,0,0,,15,0,-3,0
+50161,Dinner Suit Box,0,0,,15,0,-3,0
+50238,Cracked Un'Goro Coconut,0,0,,0,8,0,0
+50301,Landro's Pet Box,0,0,,15,2,0,0
+51316,Unsealed Chest,0,0,,15,0,0,0
+51999,Satchel of Helpful Goods,0,0,,15,0,0,0
+52000,Satchel of Helpful Goods,0,0,,15,0,0,0
+52001,Satchel of Helpful Goods,0,0,,15,0,0,0
+52002,Satchel of Helpful Goods,0,0,,15,0,0,0
+52003,Satchel of Helpful Goods,0,0,,15,0,0,0
+52004,Satchel of Helpful Goods,0,0,,15,0,0,0
+52005,Satchel of Helpful Goods,0,0,,15,0,0,0
+52006,Sack of Frosty Treasures,0,0,,15,0,0,0
+52274,Earthen Ring Supplies,0,0,,15,0,0,0
+52304,Fire Prism,0,0,,0,8,3,0
+52331,Snufflenose Starter Kit,0,0,,15,0,0,0
+52344,Earthen Ring Supplies,0,0,,15,0,0,0
+52676,Cache of the Ley-Guardian,0,0,,15,0,0,0
+54467,Tabard Lost & Found,0,0,,15,0,0,0
+54516,Loot-Filled Pumpkin,0,0,,15,0,-3,0
+54535,Keg-Shaped Treasure Chest,0,0,,15,0,-3,0
+54536,Satchel of Chilled Goods,0,0,,15,0,0,0
+54537,Heart-Shaped Box,0,0,,15,0,-3,0
+57540,Coldridge Mountaineer's Pouch,0,0,,15,0,0,0
+60681,Cannary's Cache,0,0,,15,0,0,0
+61387,Hidden Stash,0,0,,12,0,0,0
+62062,Bulging Sack of Gold,0,0,,15,0,0,0
+63349,Flame-Scarred Junkbox,1,1946,?,15,0,0,0
+64491,Royal Reward,0,0,,0,8,0,0
+64657,Canopic Jar,0,0,,15,4,0,0
+65513,Crate of Tasty Meat,0,0,,7,11,0,0
+66943,Treasures from Grim Batol,0,0,,15,0,0,0
+67248,Satchel of Helpful Goods,0,0,,15,0,0,0
+67250,Satchel of Helpful Goods,0,0,,15,0,0,0
+67414,Bag of Shiny Things,0,0,,15,0,0,0
+67443,Winter Veil Gift,0,0,,15,0,-3,0
+67495,Strange Bloated Stomach,0,0,,15,4,0,0
+67539,Tiny Treasure Chest,0,0,,15,0,0,0
+67597,Sealed Crate,0,0,,15,4,0,0
+68133,Violet Chest,0,0,,15,0,0,0
+68384,Moonkin Egg,0,0,,15,2,0,0
+68598,Very Fat Sack of Coins,0,0,,15,0,0,0
+68689,Imported Supplies,0,0,,7,11,0,0
+68729,Elementium Lockbox,1,1948,?,15,0,0,0
+68795,Stendel's Bane,0,0,,15,0,0,0
+68813,Satchel of Freshly-Picked Herbs,0,0,,15,0,0,0
+69817,Hive Queen's Honeycomb,0,0,,15,0,0,0
+69818,Giant Sack,0,0,,15,0,0,0
+69822,Master Chef's Groceries,0,0,,15,0,0,0
+69823,Gub's Catch,0,0,,15,0,0,0
+69886,Bag of Coins,0,0,,15,0,0,0
+69903,Satchel of Exotic Mysteries,0,0,,15,0,0,0
+69999,Moat Monster Feeding Kit,0,0,,12,0,0,0
+70719,Water-Filled Gills,0,0,,15,0,0,0
+70931,Scrooge's Payoff,0,0,,15,0,-3,0
+70938,Winter Veil Gift,0,0,,15,0,-3,0
+71631,Zen'Vorka's Cache,0,0,,15,0,0,0
+72201,Plump Intestines,0,0,,15,4,0,0
+73792,Stolen Present,0,0,,15,0,0,0
+77501,Blue Blizzcon Bag,0,0,,15,0,0,0
+77956,Spectral Mount Crate,0,0,,15,5,0,0
+78897,Pouch o' Tokens,0,0,,15,0,0,0
+78898,Sack o' Tokens,0,0,,15,0,0,0
+78899,Pouch o' Tokens,0,0,,15,0,0,0
+78900,Pouch o' Tokens,0,0,,15,0,0,0
+78901,Pouch o' Tokens,0,0,,15,0,0,0
+78902,Pouch o' Tokens,0,0,,15,0,0,0
+78903,Pouch o' Tokens,0,0,,15,0,0,0
+78904,Pouch o' Tokens,0,0,,15,0,0,0
+78905,Sack o' Tokens,0,0,,15,0,0,0
+78906,Sack o' Tokens,0,0,,15,0,0,0
+78907,Sack o' Tokens,0,0,,15,0,0,0
+78908,Sack o' Tokens,0,0,,15,0,0,0
+78909,Sack o' Tokens,0,0,,15,0,0,0
+78910,Sack o' Tokens,0,0,,15,0,0,0
+78930,Sealed Crate,0,0,,15,4,0,0
+85223,Enigma Seed Pack,0,0,,15,0,0,0
+85224,Basic Seed Pack,0,0,,15,0,0,0
+85225,Basic Seed Pack,0,0,,15,0,0,0
+85226,Basic Seed Pack,0,0,,15,0,0,0
+85227,Special Seed Pack,0,0,,15,0,0,0
+85271,Secret Stash,0,0,,15,0,0,0
+85272,Tree Seed Pack,0,0,,15,0,0,0
+85275,Chee Chee's Goodie Bag,0,0,,15,0,0,0
+85276,Celebration Gift,0,0,,15,0,0,0
+85277,Nicely Packed Lunch,0,0,,15,0,0,0
+85497,Chirping Package,0,0,,15,0,0,0
+85498,Songbell Seed Pack,0,0,,15,0,0,0
+86428,Old Man Thistle's Treasure,0,0,,15,0,0,0
+86595,Bag of Helpful Things,0,0,,15,0,0,0
+86623,Blingtron 4000 Gift Package,0,0,,15,0,0,0
+87217,Small Bag of Goods,0,0,,15,0,0,0
+87218,Big Bag of Arms,0,0,,15,0,0,0
+87219,Huge Bag of Herbs,0,0,,15,0,0,0
+87220,Big Bag of Mysteries,0,0,,15,0,0,0
+87221,Big Bag of Jewels,0,0,,15,0,0,0
+87222,Big Bag of Linens,0,0,,15,0,0,0
+87223,Big Bag of Skins,0,0,,15,0,0,0
+87224,Big Bag of Wonders,0,0,,15,0,0,0
+87225,Big Bag of Food,0,0,,15,0,0,0
+87391,Plundered Treasure,0,0,,15,0,0,0
+87533,Crate of Dwarven Archaeology Fragments,0,0,,15,0,0,0
+87534,Crate of Draenei Archaeology Fragments,0,0,,15,0,0,0
+87535,Crate of Fossil Archaeology Fragments,0,0,,15,0,0,0
+87536,Crate of Night Elf Archaeology Fragments,0,0,,15,0,0,0
+87537,Crate of Nerubian Archaeology Fragments,0,0,,15,0,0,0
+87538,Crate of Orc Archaeology Fragments,0,0,,15,0,0,0
+87539,Crate of Tol'vir Archaeology Fragments,0,0,,15,0,0,0
+87540,Crate of Troll Archaeology Fragments,0,0,,15,0,0,0
+87541,Crate of Vrykul Archaeology Fragments,0,0,,15,0,0,0
+87701,Sack of Raw Tiger Steaks,0,0,,15,0,0,0
+87702,Sack of Mushan Ribs,0,0,,15,0,0,0
+87703,Sack of Raw Turtle Meat,0,0,,15,0,0,0
+87704,Sack of Raw Crab Meat,0,0,,15,0,0,0
+87705,Sack of Wildfowl Breasts,0,0,,15,0,0,0
+87706,Sack of Green Cabbages,0,0,,15,0,0,0
+87707,Sack of Juicycrunch Carrots,0,0,,15,0,0,0
+87708,Sack of Mogu Pumpkins,0,0,,15,0,0,0
+87709,Sack of Scallions,0,0,,15,0,0,0
+87710,Sack of Red Blossom Leeks,0,0,,15,0,0,0
+87712,Sack of Witchberries,0,0,,15,0,0,0
+87713,Sack of Jade Squash,0,0,,15,0,0,0
+87714,Sack of Striped Melons,0,0,,15,0,0,0
+87715,Sack of Pink Turnips,0,0,,15,0,0,0
+87716,Sack of White Turnips,0,0,,15,0,0,0
+87721,Sack of Jade Lungfish,0,0,,15,0,0,0
+87722,Sack of Giant Mantis Shrimp,0,0,,15,0,0,0
+87723,Sack of Emperor Salmon,0,0,,15,0,0,0
+87724,Sack of Redbelly Mandarin,0,0,,15,0,0,0
+87725,Sack of Tiger Gourami,0,0,,15,0,0,0
+87726,Sack of Jewel Danio,0,0,,15,0,0,0
+87727,Sack of Reef Octopus,0,0,,15,0,0,0
+87728,Sack of Krasarang Paddlefish,0,0,,15,0,0,0
+87729,Sack of Golden Carp,0,0,,15,0,0,0
+87730,Sack of Crocolisk Belly,0,0,,15,0,0,0
+88165,Vine-Cracked Junkbox,1,2048,?,15,0,0,0
+88496,Sealed Crate,0,0,,15,4,0,0
+88567,Ghost Iron Lockbox,1,2048,?,15,0,0,0
+89125,Sack of Pet Supplies,0,0,,0,8,0,0
+89427,Ancient Mogu Treasure,0,0,,15,0,0,0
+89428,Ancient Mogu Treasure,0,0,,15,0,0,0
+89607,Crate of Leather,0,0,,15,0,0,0
+89608,Crate of Ore,0,0,,15,0,0,0
+89609,Crate of Dust,0,0,,15,0,0,0
+89610,Pandaria Herbs,0,0,,15,0,0,0
+89613,Cache of Treasures,0,0,,15,0,0,0
+89804,Cache of Mogu Riches,0,0,,15,0,0,0
+89807,Amber Encased Treasure Pouch,0,0,,15,0,0,0
+89808,Dividends of the Everlasting Spring,0,0,,15,0,0,0
+89810,Bounty of a Sundered Land,0,0,,15,0,0,0
+89856,Amber Encased Treasure Pouch,0,0,,15,0,0,0
+89857,Dividends of the Everlasting Spring,0,0,,15,0,0,0
+89858,Cache of Mogu Riches,0,0,,15,0,0,0
+89991,Pandaria Fireworks,0,0,,15,0,4,0
+90041,Spoils of Theramore,0,0,,15,0,0,0
+90155,Golden Chest of the Golden King,0,0,,15,4,0,0
+90156,Golden Chest of the Betrayer,0,0,,15,4,0,0
+90157,Golden Chest of Windfury,0,0,,15,4,0,0
+90158,Golden Chest of the Elemental Triad,0,0,,15,4,0,0
+90159,Golden Chest of the Silent Assassin,0,0,,15,4,0,0
+90160,Golden Chest of the Light,0,0,,15,4,0,0
+90161,Golden Chest of the Holy Warrior,0,0,,15,4,0,0
+90162,Golden Chest of the Regal Lord,0,0,,15,4,0,0
+90163,Golden Chest of the Howling Beast,0,0,,15,4,0,0
+90164,Golden Chest of the Cycle,0,0,,15,4,0,0
+90165,Golden Chest of the Lich Lord,0,0,,15,4,0,0
+90395,Facets of Research,0,0,,0,8,4,0
+90397,Facets of Research,0,0,,0,8,4,0
+90398,Facets of Research,0,0,,0,8,4,0
+90399,Facets of Research,0,0,,0,8,4,0
+90400,Facets of Research,0,0,,0,8,4,0
+90401,Facets of Research,0,0,,0,8,4,0
+90406,Facets of Research,0,0,,0,8,4,0
+90537,Winner's Reward,0,0,,15,0,0,0
+90621,Hero's Purse,0,0,,15,0,0,0
+90622,Hero's Purse,0,0,,15,0,0,0
+90623,Hero's Purse,0,0,,15,0,0,0
+90624,Hero's Purse,0,0,,15,0,0,0
+90625,Treasures of the Vale,0,0,,15,0,0,0
+90626,Hero's Purse,0,0,,15,0,0,0
+90627,Hero's Purse,0,0,,15,0,0,0
+90628,Hero's Purse,0,0,,15,0,0,0
+90629,Hero's Purse,0,0,,15,0,0,0
+90630,Hero's Purse,0,0,,15,0,0,0
+90631,Hero's Purse,0,0,,15,0,0,0
+90632,Hero's Purse,0,0,,15,0,0,0
+90633,Hero's Purse,0,0,,15,0,0,0
+90634,Hero's Purse,0,0,,15,0,0,0
+90635,Hero's Purse,0,0,,15,0,0,0
+90735,Goodies from Nomi,0,0,,15,0,0,0
+90818,Misty Satchel of Exotic Mysteries,0,0,,15,4,0,0
+90839,Cache of Sha-Touched Gold,0,0,,15,0,0,0
+90840,Marauder's Gleaming Sack of Gold,0,0,,15,0,0,0
+90892,Winter Veil Gift,0,0,,15,0,-3,0
+91086,Darkmoon Pet Supplies,0,0,,0,8,0,0
+92718,Brawler's Purse,0,0,,0,8,0,0
+92719,Bulging Brawler's Purse,0,0,,0,8,0,0
+92744,Heavy Sack of Gold,0,0,,15,0,0,0
+92788,Ride Ticket Book,0,0,,15,0,0,0
+92789,Ride Ticket Book,0,0,,15,0,0,0
+92790,Ride Ticket Book,0,0,,15,0,0,0
+92791,Ride Ticket Book,0,0,,15,0,0,0
+92792,Ride Ticket Book,0,0,,15,0,0,0
+92793,Ride Ticket Book,0,0,,15,0,0,0
+92794,Ride Ticket Book,0,0,,15,0,0,0
+92813,Greater Cache of Treasures,0,0,,15,0,0,0
+92960,Silkworm Cocoon,0,0,,7,5,4,0
+93146,Pandaren Spirit Pet Supplies,0,0,,0,8,0,0
+93147,Pandaren Spirit Pet Supplies,0,0,,0,8,0,0
+93148,Pandaren Spirit Pet Supplies,0,0,,0,8,0,0
+93149,Pandaren Spirit Pet Supplies,0,0,,0,8,0,0
+93198,Tome of the Tiger,0,0,,15,0,0,0
+93199,Tome of the Crane,0,0,,15,0,0,0
+93200,Tome of the Serpent,0,0,,15,0,0,0
+93360,Serpent's Cache,0,0,,15,0,0,0
+93626,Stolen Present,0,0,,15,0,0,0
+93724,Darkmoon Game Prize,0,0,,0,8,0,0
+94158,Big Bag of Zandalari Supplies,0,0,,15,0,0,0
+94159,Small Bag of Zandalari Supplies,0,0,,15,0,0,0
+94207,Fabled Pandaren Pet Supplies,0,0,,0,8,0,0
+94219,Arcane Trove,0,0,,15,0,0,0
+94220,Sunreaver Bounty,0,0,,15,0,0,0
+94296,Cracked Primal Egg,0,0,,0,8,0,0
+94553,Notes on Lightning Steel,0,0,,15,0,0,0
+94566,Fortuitous Coffer,0,0,,15,0,0,0
+94847,Chief Engineer Jard's Journal,0,0,,15,4,0,0
+95343,Treasures of the Thunder King,0,0,,15,0,0,0
+95469,Serpent's Heart,0,0,,15,0,4,0
+95601,Shiny Pile of Refuse,0,0,,15,0,0,0
+95602,Stormtouched Cache,0,0,,15,0,0,0
+95617,Dividends of the Everlasting Spring,0,0,,15,0,0,0
+95618,Cache of Mogu Riches,0,0,,15,0,0,0
+95619,Amber Encased Treasure Pouch,0,0,,15,0,0,0
+96194,Chest of the Crackling Vanquisher,0,0,,15,0,0,0
+96195,Chest of the Crackling Conqueror,0,0,,15,0,0,0
+96196,Chest of the Crackling Protector,0,0,,15,0,0,0
+96227,Gauntlets of the Crackling Vanquisher,0,0,,15,0,0,0
+96228,Gauntlets of the Crackling Conqueror,0,0,,15,0,0,0
+96229,Gauntlets of the Crackling Protector,0,0,,15,0,0,0
+96251,Helm of the Crackling Vanquisher,0,0,,15,0,0,0
+96252,Helm of the Crackling Conqueror,0,0,,15,0,0,0
+96253,Helm of the Crackling Protector,0,0,,15,0,0,0
+96259,Leggings of the Crackling Vanquisher,0,0,,15,0,0,0
+96260,Leggings of the Crackling Conqueror,0,0,,15,0,0,0
+96261,Leggings of the Crackling Protector,0,0,,15,0,0,0
+96327,Shoulders of the Crackling Vanquisher,0,0,,15,0,0,0
+96328,Shoulders of the Crackling Conqueror,0,0,,15,0,0,0
+96329,Shoulders of the Crackling Protector,0,0,,15,0,0,0
+96938,Chest of the Crackling Vanquisher,0,0,,15,0,0,0
+96939,Chest of the Crackling Conqueror,0,0,,15,0,0,0
+96940,Chest of the Crackling Protector,0,0,,15,0,0,0
+96971,Gauntlets of the Crackling Vanquisher,0,0,,15,0,0,0
+96972,Gauntlets of the Crackling Conqueror,0,0,,15,0,0,0
+96973,Gauntlets of the Crackling Protector,0,0,,15,0,0,0
+96995,Helm of the Crackling Vanquisher,0,0,,15,0,0,0
+96996,Helm of the Crackling Conqueror,0,0,,15,0,0,0
+96997,Helm of the Crackling Protector,0,0,,15,0,0,0
+97003,Leggings of the Crackling Vanquisher,0,0,,15,0,0,0
+97004,Leggings of the Crackling Conqueror,0,0,,15,0,0,0
+97005,Leggings of the Crackling Protector,0,0,,15,0,0,0
+97071,Shoulders of the Crackling Vanquisher,0,0,,15,0,0,0
+97072,Shoulders of the Crackling Conqueror,0,0,,15,0,0,0
+97073,Shoulders of the Crackling Protector,0,0,,15,0,0,0
+97153,Spoils of the Thunder King,0,0,,15,0,0,0
+97565,Unclaimed Black Market Container,0,0,,15,0,0,0
+97948,Surplus Supplies,0,0,,15,4,0,0
+97949,Surplus Supplies,0,0,,15,4,0,0
+97950,Surplus Supplies,0,0,,15,4,0,0
+97951,Surplus Supplies,0,0,,15,4,0,0
+97952,Surplus Supplies,0,0,,15,4,0,0
+97953,Surplus Supplies,0,0,,15,4,0,0
+97954,Surplus Supplies,0,0,,15,4,0,0
+97955,Surplus Supplies,0,0,,15,4,0,0
+97956,Surplus Supplies,0,0,,15,4,0,0
+97957,Surplus Supplies,0,0,,15,4,0,0
+98095,Brawler's Pet Supplies,0,0,,0,8,0,0
+98096,Large Sack of Coins,0,0,,15,0,0,0
+98097,Huge Sack of Coins,0,0,,15,0,0,0
+98098,Bulging Sack of Coins,0,0,,15,0,0,0
+98099,Giant Sack of Coins,0,0,,15,0,0,0
+98100,Humongous Sack of Coins,0,0,,15,0,0,0
+98101,Enormous Sack of Coins,0,0,,15,0,0,0
+98102,Overflowing Sack of Coins,0,0,,15,0,0,0
+98103,Gigantic Sack of Coins,0,0,,15,0,0,0
+98133,Greater Cache of Treasures,0,0,,15,0,0,0
+98560,Arcane Trove,0,0,,15,0,0,0
+98562,Sunreaver Bounty,0,0,,15,0,0,0
+102137,Unclaimed Black Market Container,0,0,,15,0,0,0
+103535,Bulging Bag of Charms,0,0,,15,0,0,0
+103624,Treasures of the Vale,0,0,,15,4,0,0
+103632,Lucky Box of Greatness,0,0,,15,4,0,0
+104034,Purse of Timeless Coins,0,0,,15,4,0,0
+104035,Giant Purse of Timeless Coins,0,0,,15,4,0,0
+104112,Curious Ticking Parcel,0,0,,0,8,0,0
+104114,Curious Ticking Parcel,0,0,,0,8,0,0
+104198,Mantid Artifact Hunter's Kit,0,0,,15,4,0,0
+104258,Glowing Green Ash,0,0,,15,0,0,0
+104260,Satchel of Savage Mysteries,0,0,,15,4,0,0
+104261,Glowing Blue Ash,0,0,,15,0,0,0
+104263,Glinting Pile of Stone,0,0,,15,0,0,0
+104268,Pristine Stalker Hide,0,0,,15,0,0,0
+104271,Coalesced Turmoil,0,0,,15,0,0,0
+104272,Celestial Treasure Box,0,0,,15,0,0,0
+104273,Flame-Scarred Cache of Offerings,0,0,,15,0,0,0
+104275,Twisted Treasures of the Vale,0,0,,15,0,0,0
+104292,Partially-Digested Meal,0,0,,15,0,0,0
+104296,Ordon Ceremonial Robes,0,0,,15,0,0,0
+104319,Winter Veil Gift,0,0,,15,0,-3,0
+105751,Kor'kron Shaman's Treasure,0,0,,15,4,0,0
+106130,Big Bag of Herbs,0,0,,15,0,0,0
+106895,Iron-Bound Junkbox,1,2155,?,15,0,0,0
+107270,Bound Traveler's Scroll,0,0,,15,0,0,0
+107271,Frozen Envelope,0,0,,15,0,0,0
+107474,PH_6 Engorged Innards,0,0,,15,4,0,0
+108738,Giant Draenor Clam,0,0,,7,11,0,0
+108740,Stolen Weapons,0,0,,15,0,0,0
+109261,Alchemist's Cauldron,0,0,,15,0,0,0
+110278,Engorged Stomach,0,0,,15,0,0,0
+110592,Unclaimed Black Market Container,0,0,,15,0,0,0
+110678,Darkmoon Ticket Fanny Pack,0,0,,15,0,0,0
+110685,Sack of Draenor Herbs (TEMP),0,0,,15,0,0,0
+111406,Sack of Draenor Ore (TEMP),0,0,,15,0,0,0
+111598,Gold Strongbox,0,0,,15,0,0,0
+111599,Silver Strongbox,0,0,,15,0,0,0
+111600,Bronze Strongbox,0,0,,15,0,0,0
+111860,Alchemist's Cauldron,0,0,,15,0,0,0
+112108,Cracked Egg,0,0,,0,8,0,0
+112623,Pack of Fishing Supplies,0,0,,15,0,0,0
+113258,Blingtron 5000 Gift Package,0,0,,15,0,0,0
+113259,Gift of the Draenei,0,0,,15,0,0,0
+114028,Small Pouch of Coins,0,0,,15,0,0,0
+114634,Icy Satchel of Helpful Goods,0,0,,15,0,0,0
+114641,Icy Satchel of Helpful Goods,0,0,,15,0,0,0
+114648,Scorched Satchel of Helpful Goods,0,0,,15,0,0,0
+114655,Scorched Satchel of Helpful Goods,0,0,,15,0,0,0
+114662,Tranquil Satchel of Helpful Goods,0,0,,15,0,0,0
+114669,Tranquil Satchel of Helpful Goods,0,0,,15,0,0,0
+114970,Small Pouch of Coins,0,0,,15,0,0,0
+116062,Greater Darkmoon Pet Supplies,0,0,,0,8,0,0
+116111,Small Pouch of Coins,0,0,,15,0,0,0
+116129,Desiccated Orc's Coin Pouch,0,0,,15,4,0,0
+116150,Crate of Stolen Resources,0,0,,15,0,0,0
+116202,Pet Care Package,0,0,,15,4,-3,0
+116376,Small Pouch of Coins,0,0,,15,0,0,0
+116404,Pilgrim's Bounty,0,0,,15,4,-3,0
+116761,Winter Veil Gift,0,0,,15,0,-3,0
+116762,Stolen Present,0,0,,15,0,0,0
+116764,Small Pouch of Coins,0,0,,15,0,0,0
+116920,True Steel Lockbox,1,2155,?,15,0,0,0
+116980,Invader's Forgotten Treasure,0,0,,15,4,0,0
+117386,Crate of Pandaren Archaeology Fragments,0,0,,15,0,0,0
+117387,Crate of Mogu Archaeology Fragments,0,0,,15,0,0,0
+117388,Crate of Mantid Archaeology Fragments,0,0,,15,0,0,0
+117392,Loot-Filled Pumpkin,0,0,,15,0,-3,0
+117393,Keg-Shaped Treasure Chest,0,0,,15,0,-3,0
+117394,Satchel of Chilled Goods,0,0,,15,0,0,0
+117395,Stolen Present,0,0,,15,0,0,0
+117414,Stormwind Guard Armor Package,0,0,,15,4,0,0
+118065,Gleaming Ashmaul Strongbox,0,0,,15,0,0,0
+118066,Ashmaul Strongbox,0,0,,15,0,0,0
+118093,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+118094,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+118193,Mysterious Shining Lockbox,0,0,,15,4,0,0
+118529,Cache of Highmaul Treasures,0,0,,15,4,0,0
+118530,Cache of Highmaul Treasures,0,0,,15,4,0,0
+118531,Cache of Highmaul Treasures,0,0,,15,4,0,0
+118706,Cracked Goren Egg,0,0,,0,8,0,0
+118759,Alchemy Experiment,0,0,,15,0,0,0
+118924,Cache of Arms,0,0,,15,0,0,0
+118925,Plundered Booty,0,0,,15,0,0,0
+118926,Huge Pile of Skins,0,0,,15,0,0,0
+118927,Maximillian's Laundry,0,0,,15,0,0,0
+118928,Faintly-Sparkling Cache,0,0,,15,0,0,0
+118929,Sack of Mined Ore,0,0,,15,0,0,0
+118930,Bag of Everbloom Herbs,0,0,,15,0,0,0
+118931,Leonid's Bag of Supplies,0,0,,15,0,0,0
+119000,Highmaul Lockbox,0,0,,15,0,0,0
+119036,Box of Storied Treasures,0,0,,15,4,0,0
+119037,Supply of Storied Rarities,0,0,,15,4,0,0
+119040,Cache of Mingled Treasures,0,0,,15,4,0,0
+119041,Strongbox of Mysterious Treasures,0,0,,15,4,0,0
+119042,Crate of Valuable Treasures,0,0,,15,4,0,0
+119043,Trove of Smoldering Treasures,0,0,,15,4,0,0
+119188,Unclaimed Payment,0,0,,15,0,0,0
+119189,Unclaimed Payment,0,0,,15,0,0,0
+119190,Unclaimed Payment,0,0,,15,0,0,0
+119191,Jewelcrafting Payment,0,0,,15,0,0,0
+119195,Jewelcrafting Payment,0,0,,15,0,0,0
+119196,Jewelcrafting Payment,0,0,,15,0,0,0
+119197,Jewelcrafting Payment,0,0,,15,0,0,0
+119198,Jewelcrafting Payment,0,0,,15,0,0,0
+119199,Jewelcrafting Payment,0,0,,15,0,0,0
+119200,Jewelcrafting Payment,0,0,,15,0,0,0
+119201,Jewelcrafting Payment,0,0,,15,0,0,0
+119330,Steel Strongbox,0,0,,15,0,0,0
+120142,Coliseum Champion's Spoils,0,0,,0,8,0,0
+120146,Smuggled Sack of Gold,0,0,,15,0,0,0
+120147,Bloody Gold Purse,0,0,,15,0,0,0
+120151,Gleaming Ashmaul Strongbox,0,0,,15,0,0,0
+120170,Partially-Digested Bag,0,0,,0,8,0,0
+120184,Ashmaul Strongbox,0,0,,15,0,0,0
+120312,Bulging Sack of Coins,0,0,,15,0,0,0
+120319,Invader's Damaged Cache,0,0,,15,4,0,0
+120320,Invader's Abandoned Sack,0,0,,15,4,0,0
+120322,Klinking Stacked Card Deck,0,0,,0,8,0,0
+120323,Bulging Stacked Card Deck,0,0,,0,8,0,0
+120324,Bursting Stacked Card Deck,0,0,,0,8,0,0
+120325,Overflowing Stacked Card Deck,0,0,,0,8,0,0
+120334,Satchel of Cosmic Mysteries,0,0,,15,4,0,0
+120353,Steel Strongbox,0,0,,15,0,0,0
+120354,Gold Strongbox,0,0,,15,0,0,0
+120355,Silver Strongbox,0,0,,15,0,0,0
+120356,Bronze Strongbox,0,0,,15,0,0,0
+121331,Leystone Lockbox,1,2348,?,15,0,6,0
+122163,Routed Invader's Crate of Spoils,0,0,,15,4,0,0
+122191,Bloody Stack of Invitations,0,0,,15,4,0,0
+122241,Bounty Payout,0,0,,15,4,0,0
+122242,Relic Acquisition Compensatory Package,0,0,,15,4,0,0
+122478,Scouting Report: Frostfire Ridge,0,0,,15,4,0,0
+122479,Scouting Report: Shadowmoon Valley,0,0,,15,4,0,0
+122480,Scouting Report: Gorgrond,0,0,,15,4,0,0
+122481,Scouting Report: Talador,0,0,,15,4,0,0
+122482,Scouting Report: Spires of Arak,0,0,,15,4,0,0
+122483,Scouting Report: Nagrand,0,0,,15,4,0,0
+122484,Blackrock Foundry Spoils,0,0,,15,4,0,0
+122485,Blackrock Foundry Spoils,0,0,,15,4,0,0
+122486,Blackrock Foundry Spoils,0,0,,15,4,0,0
+122607,Savage Satchel of Cooperation,0,0,,15,4,0,0
+122608,Garrison Resource Shipment,0,0,,15,4,0,0
+122613,Stash of Dusty Music Rolls,0,0,,15,0,0,0
+122718,Clinking Present,0,0,,15,0,0,0
+123857,Runic Pouch,0,0,,15,4,0,0
+123858,Follower Retraining Scroll Case,0,0,,15,4,0,0
+123961,Recipe List: Leysmithing,0,0,,15,4,0,0
+123962,Recipe List: Hardened Leystone,0,0,,15,4,0,0
+123963,Recipe List: Masterwork Demonsteel,0,0,,15,4,0,0
+123975,Greater Bounty Spoils,0,0,,15,4,0,0
+124670,Sealed Darkmoon Crate,0,0,,15,4,0,0
+126901,Gold Strongbox,0,0,,15,0,0,0
+126902,Silver Strongbox,0,0,,15,0,0,0
+126903,Bronze Strongbox,0,0,,15,0,0,0
+126904,Steel Strongbox,0,0,,15,0,0,0
+126905,Steel Strongbox,0,0,,15,0,0,0
+126906,Gold Strongbox,0,0,,15,0,0,0
+126907,Silver Strongbox,0,0,,15,0,0,0
+126908,Bronze Strongbox,0,0,,15,0,0,0
+126909,Gold Strongbox,0,0,,15,0,0,0
+126910,Silver Strongbox,0,0,,15,0,0,0
+126911,Bronze Strongbox,0,0,,15,0,0,0
+126912,Steel Strongbox,0,0,,15,0,0,0
+126913,Steel Strongbox,0,0,,15,0,0,0
+126914,Gold Strongbox,0,0,,15,0,0,0
+126915,Silver Strongbox,0,0,,15,0,0,0
+126916,Bronze Strongbox,0,0,,15,0,0,0
+126917,Ashmaul Strongbox,0,0,,15,0,0,0
+126918,Ashmaul Strongbox,0,0,,15,0,0,0
+126919,Champion's Strongbox,0,0,,15,0,0,0
+126920,Champion's Strongbox,0,0,,15,0,0,0
+126921,Ashmaul Strongbox,0,0,,15,0,0,0
+126922,Ashmaul Strongbox,0,0,,15,0,0,0
+126923,Champion's Strongbox,0,0,,15,0,0,0
+126924,Champion's Strongbox,0,0,,15,0,0,0
+126947,Nal'ryssa's Spare Mining Supplies,0,0,,15,4,0,0
+127141,Bloated Thresher,0,0,,15,0,0,0
+127148,Silas' Secret Stash,0,0,,15,4,0,0
+127395,Ripened Strange Fruit,0,0,,0,8,0,0
+127831,Challenger's Strongbox,0,0,,15,4,0,0
+127853,Iron Fleet Treasure Chest,0,0,,15,4,0,0
+127854,Iron Fleet Treasure Chest,0,0,,15,4,0,0
+127855,Iron Fleet Treasure Chest,0,0,,15,4,0,0
+127995,Unclaimed Black Market Container,0,0,,15,0,0,0
+128025,Rattling Iron Cage,0,0,,15,4,0,0
+128213,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+128214,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+128215,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+128216,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+128319,Void-Shrouded Satchel,0,0,,15,4,0,0
+128327,Small Pouch of Coins,0,0,,15,0,0,0
+128391,Iron Fleet Treasure Chest,0,0,,15,4,0,0
+128513,Anniversary Gift,0,0,,15,4,0,0
+128652,Gently Shaken Gift,0,0,,15,0,-3,0
+128653,Winter Veil Gift,0,0,,15,0,-3,0
+128670,Savage Gift,0,0,,15,4,-3,0
+128803,Savage Satchel of Cooperation,0,0,,15,4,0,0
+129746,Oddly-Shaped Stomach,0,0,,15,4,6,0
+130186,Intern Items - BJI,0,0,,15,0,0,0
+132892,Blingtron 6000 Gift Package,0,0,,15,0,0,0
+133549,Muck-Covered Shoes,0,0,,0,8,0,0
+133721,Message in a Beer Bottle,0,0,,0,8,6,0
+133803,Common Bag of Loot,0,0,,15,4,0,0
+135539,Crate of Battlefield Goods,0,0,,15,0,0,0
+135540,Crate of Battlefield Goods,0,0,,15,0,0,0
+135541,Crusader's Crate of Battlefield Goods,0,0,,15,0,0,0
+135542,Icy Crate of Battlefield Goods,0,0,,15,0,0,0
+135543,Rival's Crate of Battlefield Goods,0,0,,15,0,0,0
+135544,Tranquil Crate of Helpful Goods - Reuse Me,0,0,,15,0,0,0
+135545,Savage Crate of Battlefield Goods,0,0,,15,0,0,0
+135546,Fel-Touched Crate of Battlefield Goods,0,0,,15,0,0,0
+136359,Shaman's Pouch,0,0,,15,0,0,0
+136362,Ancient War Remnants,0,0,,15,4,0,0
+136383,Ravencrest Cache,0,0,,15,4,0,0
+137414,Pet Tournament Purse,0,0,,0,8,0,0
+137560,Dreamweaver Provisions,0,0,,15,4,6,0
+137561,Highmountain Tribute,0,0,,15,4,6,0
+137562,Valarjar Cache,0,0,,15,4,6,0
+137563,Farondis Lockbox,0,0,,15,4,6,0
+137564,Nightfallen Hoard,0,0,,15,4,6,0
+137565,Warden's Field Kit,0,0,,15,4,6,0
+137590,Pile of Silk,0,0,,7,11,6,0
+137591,Pile of Skins,0,0,,7,11,6,0
+137592,Pile of Ore,0,0,,7,11,6,0
+137593,Pile of Herbs,0,0,,7,11,6,0
+137594,Pile of Gems,0,0,,7,11,6,0
+137600,Pile of Pants,0,0,,7,11,6,0
+137608,Growling Sac,0,0,,7,11,0,0
+138098,Iron-Bound Crate of Battlefield Goods,0,0,,15,0,0,0
+138469,Champion's Strongbox,0,0,,15,0,6,0
+138470,Silver Strongbox,0,0,,15,0,0,0
+138471,Bronze Strongbox,0,0,,15,0,0,0
+138472,Steel Strongbox,0,0,,15,0,0,0
+138473,Steel Strongbox,0,0,,15,0,0,0
+138474,Champion's Strongbox,0,0,,15,0,6,0
+138475,Silver Strongbox,0,0,,15,0,0,0
+138476,Bronze Strongbox,0,0,,15,0,0,0
+139048,Small Legion Chest,0,0,,15,0,6,0
+139049,Large Legion Chest,0,0,,15,0,6,0
+139137,Hag's Belongings,0,0,,0,8,-3,0
+139284,Anniversary Gift,0,0,,15,4,0,0
+139341,Winter Veil Gift,0,0,,15,0,-3,0
+139343,Gently Shaken Gift,0,0,,15,0,-3,0
+139416,Bloated Sewersucker,0,0,,0,8,0,0
+139467,Satchel of Spoils,0,0,,15,4,0,0
+139484,Cache of Nightmarish Treasures,0,0,,15,4,6,0
+139486,Cache of Nightmarish Treasures,0,0,,15,4,6,0
+139487,Cache of Nightmarish Treasures,0,0,,15,4,6,0
+139488,Cache of Nightmarish Treasures,0,0,,15,4,6,0
+139771,Seething Essence,0,0,,15,4,0,0
+139777,Strange Crate,0,0,,0,8,0,0
+139879,Crate of Champion Equipment,0,0,,15,0,6,0
+140148,Cache of Nightborne Treasures,0,0,,15,4,6,0
+140150,Cache of Nightborne Treasures,0,0,,15,4,6,0
+140152,Cache of Nightborne Treasures,0,0,,15,4,6,0
+140154,Cache of Nightborne Treasures,0,0,,15,4,6,0
+140200,Immaculate Nightshard Curio,0,0,,15,4,6,0
+140220,Scavenged Cloth,0,0,,15,4,0,0
+140221,Found Sack of Gems,0,0,,15,4,0,0
+140222,Harvested Goods,0,0,,15,4,0,0
+140224,Butchered Meat,0,0,,15,4,0,0
+140225,Salvaged Armor,0,0,,15,4,0,0
+140226,Mana-Tinged Pack,0,0,,15,4,0,0
+140227,Bloodhunter's Quarry,0,0,,15,4,0,0
+140591,Shattered Satchel of Cooperation,0,0,,15,4,0,0
+140997,Alliance Strongbox,0,0,,15,4,0,0
+140998,Horde Strongbox,0,0,,15,4,0,0
+141069,Skyhold Chest of Riches,0,0,,15,0,6,0
+141155,Challenger's Spoils,0,0,,15,4,6,0
+141156,Haunted Ravencrest Keepsake,0,0,,15,4,6,0
+141157,Nightborne Rucksack,0,0,,15,4,6,0
+141158,Despoiled Keeper's Cache,0,0,,15,4,6,0
+141159,Watertight Salvage Bag,0,0,,15,4,6,0
+141160,Seaweed-Encrusted Satchel,0,0,,15,4,6,0
+141161,Cache of the Black Dragon,0,0,,15,4,6,0
+141162,Unmarked Suramar Vault Crate,0,0,,15,4,6,0
+141163,Bag of Confiscated Materials,0,0,,15,4,6,0
+141164,Violet Hold Contraband Locker,0,0,,15,4,6,0
+141165,Challenger's Spoils,0,0,,15,4,6,0
+141166,Haunted Ravencrest Keepsake,0,0,,15,4,6,0
+141167,Nightborne Rucksack,0,0,,15,4,6,0
+141168,Despoiled Keeper's Cache,0,0,,15,4,6,0
+141169,Watertight Salvage Bag,0,0,,15,4,6,0
+141170,Seaweed-Encrusted Satchel,0,0,,15,4,6,0
+141171,Cache of the Black Dragon,0,0,,15,4,6,0
+141172,Unmarked Suramar Vault Crate,0,0,,15,4,6,0
+141173,Bag of Confiscated Materials,0,0,,15,4,6,0
+141174,Violet Hold Contraband Locker,0,0,,15,4,6,0
+141175,Challenger's Spoils,0,0,,15,4,6,0
+141176,Haunted Ravencrest Keepsake,0,0,,15,4,6,0
+141177,Nightborne Rucksack,0,0,,15,4,6,0
+141178,Despoiled Keeper's Cache,0,0,,15,4,6,0
+141179,Watertight Salvage Bag,0,0,,15,4,6,0
+141180,Seaweed-Encrusted Satchel,0,0,,15,4,6,0
+141181,Cache of the Black Dragon,0,0,,15,4,6,0
+141182,Unmarked Suramar Vault Crate,0,0,,15,4,6,0
+141183,Bag of Confiscated Materials,0,0,,15,4,6,0
+141184,Violet Hold Contraband Locker,0,0,,15,4,6,0
+141344,Tribute of the Broken Isles,0,0,,0,8,6,0
+141350,Kirin Tor Chest,0,0,,15,4,6,0
+141995,Unclaimed Black Market Container,0,0,,15,0,0,0
+142023,Adventurer's Footlocker,0,0,,0,8,6,0
+142113,Crate of Arakkoa Archaeology Fragments,0,0,,15,0,0,0
+142114,Crate of Draenor Clans Archaeology Fragments,0,0,,15,0,0,0
+142115,Crate of Ogre Archaeology Fragments,0,0,,15,0,0,0
+142342,Glittering Pack,0,0,,15,4,6,0
+142350,Challenger's Purse,0,0,,0,8,0,0
+142381,Oath of Fealty,0,0,,0,8,0,0
+143606,Satchel of Battlefield Spoils,0,0,,15,4,6,0
+143607,Soldier's Footlocker,0,0,,15,4,6,0
+143948,Chilled Satchel of Vegetables,0,0,,0,8,4,0
+144291,Tadpole Gift,0,0,,0,0,0,0
+144330,Sprocket Container,0,0,,15,4,0,0
+144345,Pile of Pet Goodies,0,0,,15,4,0,0
+144373,Claw-Marked Brawler's Purse,0,0,,0,8,0,0
+144374,Groovy Brawler's Purse,0,0,,0,8,0,0
+144375,Feathered Brawler's Purse,0,0,,0,8,0,0
+144376,Agile Brawler's Purse,0,0,,0,8,0,0
+144377,Beginning Brawler's Purse,0,0,,0,8,0,0
+144378,Gorestained Brawler's Purse,0,0,,0,8,0,0
+144379,Murderous Brawler's Purse,0,0,,0,8,0,0
+146317,Mr. Smite's Supplies,0,0,,0,8,0,0
+146948,Tribute of the Broken Isles,0,0,,0,8,6,0
+147432,Champion Equipment,0,0,,15,0,6,0
+147446,Brawler's Footlocker,0,0,,15,4,6,0
+147518,Cache of Fel Treasures,0,0,,15,4,6,0
+147519,Cache of Fel Treasures,0,0,,15,4,6,0
+147520,Cache of Fel Treasures,0,0,,15,4,6,0
+147521,Cache of Fel Treasures,0,0,,15,4,6,0
+147573,Trial of Style Reward: First Place,0,0,,0,8,-3,0
+147574,Trial of Style Reward: Second Place,0,0,,0,8,-3,0
+147575,Trial of Style Reward: Third Place,0,0,,0,8,-3,0
+147576,Trial of Style Consolation Prize,0,0,,0,8,-3,0
+147876,Anniversary Gift,0,0,,15,4,0,0
+147905,Chest of Champion Equipment,0,0,,15,0,6,0
+147907,Heart-Shaped Carton,0,0,,15,0,-3,0
+149503,Stolen Gift,0,0,,15,0,0,0
+149504,Smokywood Pastures Special Present,0,0,,15,0,0,0
+149574,Loot-Stuffed Pumpkin,0,0,,15,0,-3,0
+149752,Keg-Shaped Treasure Box,0,0,,15,0,-3,0
+149753,Knapsack of Chilled Goods,0,0,,15,0,0,0
+150924,Greater Tribute of the Broken Isles,0,0,,0,8,6,0
+151221,Gooey Brawler's Purse,0,0,,0,8,0,0
+151222,Leather Brawler's Purse,0,0,,0,8,0,0
+151223,Booming Brawler's Purse,0,0,,0,8,0,0
+151224,Bitten Brawler's Purse,0,0,,0,8,0,0
+151225,Wet Brawler's Purse,0,0,,0,8,0,0
+151229,Brawler's Music Box,0,0,,0,8,0,0
+151230,Croc-Skin Brawler's Purse,0,0,,0,8,0,0
+151231,Brawler's Egg,0,0,,0,8,0,0
+151232,Brawler's Package,0,0,,0,8,0,0
+151233,Blingin' Brawler's Bag,0,0,,0,8,0,0
+151235,Filthy Brawler's Purse,0,0,,0,8,0,0
+151238,Dark Brawler's Purse,0,0,,0,8,0,0
+151264,Clunky Brawler's Purse,0,0,,0,8,0,0
+151345,Gently Shaken Gift,0,0,,15,0,-3,0
+151350,Winter Veil Gift,0,0,,15,0,-3,0
+151482,Time-Lost Wallet,0,0,,0,8,0,0
+151550,Time-Lost Keepsake Box,0,0,,0,8,0,0
+151551,Time-Lost Keepsake Box,0,0,,0,8,0,0
+151552,Time-Lost Keepsake Box,0,0,,0,8,0,0
+151553,Time-Lost Keepsake Box,0,0,,0,8,0,0
+151554,Time-Lost Keepsake Box,0,0,,0,8,0,0
+151557,Champion's Strongbox,0,0,,15,0,6,0
+151558,Champion's Strongbox,0,0,,15,0,6,0
+151638,Leprous Sack of Pet Supplies,0,0,,0,8,0,0
+152578,Sack of Herbs,0,0,,7,11,7,0
+152580,Pile of Cloth,0,0,,7,11,7,0
+152581,Bag of Jewels,0,0,,7,11,7,0
+152582,Stack of Skins,0,0,,7,11,7,0
+152868,Anglin' Art's Mudfish Bait,0,0,,15,0,7,0
+153116,Wyrmtongue Cache of Herbs,0,0,,15,0,0,0
+153117,Wyrmtongue Cache of Supplies,0,0,,15,0,0,0
+153118,Wyrmtongue Cache of Shiny Things,0,0,,15,0,0,0
+153119,Wyrmtongue Cache of Finery,0,0,,15,0,0,0
+153120,Wyrmtongue Cache of Minerals,0,0,,15,0,0,0
+153121,Wyrmtongue Cache of Skins,0,0,,15,0,0,0
+153122,Wyrmtongue Cache of Magic,0,0,,15,0,0,0
+153132,Coffer of Argus Equipment,0,0,,15,0,6,0
+153191,Cracked Fel-Spotted Egg,0,0,,0,8,6,0
+153202,Argunite Cluster,0,0,,15,4,0,0
+153248,Light's Fortune,0,0,,15,4,0,0
+153501,Cache of Antoran Treasures,0,0,,15,4,6,0
+153502,Cache of Antoran Treasures,0,0,,15,4,6,0
+153503,Cache of Antoran Treasures,0,0,,15,4,6,0
+153504,Cache of Antoran Treasures,0,0,,15,4,6,0
+153574,Plain Hat Box,0,0,,15,4,7,0
+154991,Brawler's Footlocker,0,0,,15,4,6,0
+154992,Brawler's Footlocker,0,0,,15,4,6,0
+156682,Otherworldly Satchel of Helpful Goods,0,0,,15,4,1,0
+156683,Satchel of Helpful Goods,0,0,,15,4,0,0
+156688,Icy Satchel of Helpful Goods,0,0,,15,4,2,0
+156689,Scorched Satchel of Helpful Goods,0,0,,15,4,3,0
+156698,Tranquil Satchel of Helpful Goods,0,0,,15,4,4,0
+156707,Bret's Satchel of Helpful Goods,0,0,,15,4,4,0
+156836,Bulging Package,0,0,,15,4,0,0
+159783,Kane's Coin Purse,0,0,,15,0,7,0
+160054,War-Torn Satchel of Cooperation,0,0,,15,4,7,0
+160322,Pile of Ore,0,0,,7,11,7,0
+160324,Grumbling Sac,0,0,,7,11,7,0
+160439,Adventurer's Footlocker,0,0,,0,8,7,0
+160485,An Unforgettable Luncheon,0,0,,15,4,7,0
+160514,Maokka's Box,0,0,,15,4,7,0
+160578,Anglin' Art's Bag o' Fish,0,0,,15,0,7,0
+160831,Cracking Cobra Egg,0,0,,0,8,7,0
+161083,Satchel of Plundered Jewels,0,0,,15,0,7,0
+161084,Recovered Stormsong Produce,0,0,,15,0,7,0
+161878,Tiny Coin Purse,0,0,,15,0,7,0
+162637,Anniversary Gift,0,0,,15,4,0,0
+162644,Winter Veil Gift,0,0,,15,0,-3,0
+162974,Gently Shaken Gift,0,0,,15,0,-3,0
+163059,Spoils of Jani,0,0,,0,8,7,0
+163139,Carefully Wrapped Hat Box,0,0,,15,4,7,0
+163141,Spooky Hat Box,0,0,,15,4,7,0
+163142,Ironbound Hat Box,0,0,,15,4,7,0
+163144,Striped Hat Box,0,0,,15,4,7,0
+163146,Fancy Hat Box,0,0,,15,4,7,0
+163148,Luxurious Hat Box,0,0,,15,4,7,0
+163611,Seafarer's Coin Pouch,0,0,,15,4,7,0
+163612,Wayfinder's Satchel,0,0,,15,4,7,0
+163613,Sack of Plunder,0,0,,15,4,7,0
+163633,Captain Gulnaku's Treasure,0,0,,15,4,7,0
+163734,Bulging Coin Purse,0,0,,15,0,7,0
+163825,Plundered Supplies,0,0,,15,0,7,0
+163826,Raider's Supply Cache,0,0,,15,0,7,0
+164251,Champion's Strongbox,0,0,,15,0,7,0
+164252,Champion's Strongbox,0,0,,15,0,7,0
+164257,Cache of Uldir Treasures,0,0,,15,4,7,0
+164258,Cache of Uldir Treasures,0,0,,15,4,7,0
+164259,Cache of Uldir Treasures,0,0,,15,4,7,0
+164260,Cache of Uldir Treasures,0,0,,15,4,7,0
+164261,Steel Strongbox,0,0,,15,0,7,0
+164262,Steel Strongbox,0,0,,15,0,7,0
+164263,Steel Strongbox,0,0,,15,0,7,0
+164264,Steel Strongbox,0,0,,15,0,7,0
+164625,Crate of Demon Archaeology Fragments,0,0,,15,0,0,0
+164626,Crate of Highborne Archaeology Fragments,0,0,,15,0,0,0
+164627,Crate of Highmountain Tauren Archaeology Fragments,0,0,,15,0,0,0
+164931,Rumbler's Purse,0,0,,0,8,0,0
+164938,G.G. Gearbox,0,0,,0,8,0,0
+164939,Overstuffed Silkweave Purse,0,0,,0,8,0,0
+164940,Mysterious Satchel,0,0,,0,8,0,0
+165711,Gold Strongbox,0,0,,15,0,7,0
+165712,Silver Strongbox,0,0,,15,0,7,0
+165713,Bronze Strongbox,0,0,,15,0,7,0
+165714,Gold Strongbox,0,0,,15,0,7,0
+165715,Silver Strongbox,0,0,,15,0,7,0
+165716,Bronze Strongbox,0,0,,15,0,7,0
+165717,Steel Strongbox,0,0,,15,0,7,0
+165718,Steel Strongbox,0,0,,15,0,7,0
+165729,Cache of Dazar'alor Treasures,0,0,,15,4,7,0
+165730,Cache of Dazar'alor Treasures,0,0,,15,4,7,0
+165731,Cache of Dazar'alor Treasures,0,0,,15,4,7,0
+165732,Cache of Dazar'alor Treasures,0,0,,15,4,7,0
+165839,Unopened Gnomeregan Supply Box,0,0,,0,8,0,0
+165851,Bag of Anchors,0,0,,7,11,7,0
+166245,Tortollan Seekers Supplies,0,0,,15,4,7,0
+166282,Talanji's Expedition Supplies,0,0,,15,4,7,0
+166290,Voldunai Supplies,0,0,,15,4,7,0
+166292,Zandalari Empire Supplies,0,0,,15,4,7,0
+166294,Storm's Wake Supplies,0,0,,15,4,7,0
+166295,Proudmoore Admiralty Supplies,0,0,,15,4,7,0
+166297,Order of Embers Supplies,0,0,,15,4,7,0
+166298,Champions of Azeroth Supplies,0,0,,15,4,7,0
+166299,Honorbound Supplies,0,0,,15,4,7,0
+166300,7th Legion Supplies,0,0,,15,4,7,0
+166505,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+166508,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+166509,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+166510,Relinquished Azerite Helm,0,0,,0,8,7,0
+166511,Relinquished Azerite Helm,0,0,,0,8,7,0
+166512,Relinquished Azerite Helm,0,0,,0,8,7,0
+166513,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+166514,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+166515,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+166529,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+166530,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+166531,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+166532,Relinquished Azerite Helm,0,0,,0,8,7,0
+166533,Relinquished Azerite Helm,0,0,,0,8,7,0
+166534,Relinquished Azerite Helm,0,0,,0,8,7,0
+166535,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+166536,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+166537,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+166741,Nomi's Grocery Tote,0,0,,7,8,7,0
+167696,Build-a-Computer Kit,0,0,,15,4,7,0
+168057,Rustbolt Requisitions,0,0,,15,4,7,0
+168124,Cache of War Resources,0,0,,0,8,7,0
+168162,Chronal Cache of Cloth,0,0,,7,11,7,0
+168204,Small Metal Box,0,0,,15,0,7,0
+168263,Mundane Recycling Requisition,0,0,,0,8,7,0
+168264,Recycling Requisition,0,0,,0,8,7,0
+168266,Strange Recycling Requisition,0,0,,0,8,7,0
+168394,Box of Assorted Parts,0,0,,0,8,7,0
+168395,Irradiated Box of Assorted Parts,0,0,,0,8,7,0
+168488,Seafarer's Lost Coin Pouch,0,0,,15,4,7,0
+168740,Blingtron 7000 Gift Package,0,0,,15,0,7,0
+168833,Experimental Adventurer Augmentation,0,0,,0,8,7,0
+169113,Advanced Adventurer Augmentation,0,0,,0,8,7,0
+169133,Crystallized Jelly,0,0,,0,8,7,0
+169137,Extraordinary Adventurer Augmentation,0,0,,0,8,7,0
+169335,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+169336,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+169337,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+169338,Relinquished Azerite Helm,0,0,,0,8,7,0
+169339,Relinquished Azerite Helm,0,0,,0,8,7,0
+169340,Relinquished Azerite Helm,0,0,,0,8,7,0
+169341,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+169342,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+169343,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+169430,Unclaimed Black Market Container,0,0,,15,0,0,0
+169471,Cogfrenzy's Construction Toolkit,0,0,,15,0,7,0
+169475,Barnacled Lockbox,1,3106,?,15,0,7,0
+169477,Benthic Girdle,0,0,,0,8,7,0
+169478,Benthic Bracers,0,0,,0,8,7,0
+169479,Benthic Helm,0,0,,0,8,7,0
+169480,Benthic Chestguard,0,0,,0,8,7,0
+169481,Benthic Cloak,0,0,,0,8,7,0
+169482,Benthic Leggings,0,0,,0,8,7,0
+169483,Benthic Treads,0,0,,0,8,7,0
+169484,Benthic Spaulders,0,0,,0,8,7,0
+169485,Benthic Gauntlets,0,0,,0,8,7,0
+169666,Unopened Stratholme Supply Crate,0,0,,0,8,0,0
+169838,Azeroth Mini: Starter Pack,0,0,,15,0,7,0
+169848,Azeroth Mini Pack: Bondo's Yard,0,0,,15,0,7,0
+169850,Azeroth Mini Pack: Mechagon,0,0,,15,0,7,0
+169903,Nazjatar Survival Pack,0,0,,0,8,7,0
+169904,Ankoan Commendation Crate,0,0,,0,8,7,0
+169905,Faintly Glowing Supplies,0,0,,0,8,7,0
+169908,Cleverly Concealed Supplies,0,0,,0,8,7,0
+169909,Poen's Neat Things,0,0,,0,8,7,0
+169910,Vim's Scavenged Supplies,0,0,,0,8,7,0
+169911,Liberated Naga Cache,0,0,,0,8,7,0
+169914,Neri's Smart Supplies,0,0,,0,8,7,0
+169915,Poen's Stashed Supplies,0,0,,0,8,7,0
+169916,Brew-Soaked Supplies,0,0,,0,8,7,0
+169917,Mysterious Azshari Chest,0,0,,0,8,7,0
+169919,Unshackled Commendation Crate,0,0,,0,8,7,0
+169920,Neri's Spare Supplies,0,0,,0,8,7,0
+169921,Spine Guarded Supplies,0,0,,0,8,7,0
+169922,Vim's Gift of Appreciation,0,0,,0,8,7,0
+169939,Ankoan Supplies,0,0,,15,4,7,0
+169940,Unshackled Supplies,0,0,,15,4,7,0
+170061,Rustbolt Supplies,0,0,,15,4,7,0
+170065,Re-Procedurally Generated Punchcard,0,0,,0,8,7,0
+170073,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+170074,Dented Ashmaul Strongbox,0,0,,15,0,0,0
+170185,Intact Naga Skeleton,0,0,,15,4,0,0
+170188,Barnacled Bag of Goods,0,0,,15,4,0,0
+170190,Mardivas' Bag of Containing,0,0,,15,4,0,0
+170195,Voidcaster's Supply Bag,0,0,,15,4,0,0
+170473,Jingling Sack,0,0,,15,4,0,0
+170489,Mardivas's Handmade Handbag,0,0,,15,0,7,0
+170539,Plundered Supplies,0,0,,15,0,7,0
+171209,Blooded Satchel,0,0,,15,4,8,0
+171210,Satchel of Nature's Bounty,0,0,,15,4,8,0
+171211,Venthyr's Coin Purse,0,0,,15,4,8,0
+171305,Salvaged Cache of Goods,0,0,,15,4,0,0
+171988,Adventurer's Footlocker,0,0,,0,8,7,0
+172014,Anniversary Gift,0,0,,15,4,0,0
+172021,Marks of Sanctification Purse,0,0,,0,8,7,0
+172224,Winter Veil Gift,0,0,,15,0,-3,0
+172225,Gently Shaken Gift,0,0,,15,0,-3,0
+173372,Cache of the Black Empire,0,0,,0,8,7,0
+173393,Black Empire Plate Chestpiece,0,0,,4,0,7,0
+173394,Black Empire Plate Boots,0,0,,4,0,7,0
+173395,Black Empire Plate Gloves,0,0,,4,0,7,0
+173396,Black Empire Plate Helm,0,0,,4,0,7,0
+173397,Black Empire Plate Leggings,0,0,,4,0,7,0
+173398,Black Empire Plate Spaulders,0,0,,4,0,7,0
+173399,Black Empire Plate Belt,0,0,,4,0,7,0
+173400,Black Empire Mail Chestpiece,0,0,,4,0,7,0
+173401,Black Empire Mail Boots,0,0,,4,0,7,0
+173402,Black Empire Mail Gloves,0,0,,4,0,7,0
+173403,Black Empire Mail Helm,0,0,,4,0,7,0
+173404,Black Empire Mail Leggings,0,0,,4,0,7,0
+173405,Black Empire Mail Spaulders,0,0,,4,0,7,0
+173406,Black Empire Mail Belt,0,0,,4,0,7,0
+173407,Black Empire Leather Chestpiece,0,0,,4,0,7,0
+173408,Black Empire Leather Boots,0,0,,4,0,7,0
+173409,Black Empire Leather Gloves,0,0,,4,0,7,0
+173410,Black Empire Leather Helm,0,0,,4,0,7,0
+173411,Black Empire Leather Leggings,0,0,,4,0,7,0
+173412,Black Empire Leather Spaulders,0,0,,4,0,7,0
+173413,Black Empire Leather Belt,0,0,,4,0,7,0
+173414,Black Empire Cloth Robes,0,0,,4,0,7,0
+173415,Black Empire Cloth Boots,0,0,,4,0,7,0
+173416,Black Empire Cloth Gloves,0,0,,4,0,7,0
+173417,Black Empire Cloth Helm,0,0,,4,0,7,0
+173418,Black Empire Cloth Leggings,0,0,,4,0,7,0
+173419,Black Empire Cloth Spaulders,0,0,,4,0,7,0
+173420,Black Empire Cloth Belt,0,0,,4,0,7,0
+173422,Black Empire Plate Bracers,0,0,,4,0,7,0
+173423,Black Empire Cloth Bracers,0,0,,4,0,7,0
+173424,Black Empire Leather Bracers,0,0,,4,0,7,0
+173425,Black Empire Mail Bracers,0,0,,4,0,7,0
+173734,Mysterious Crate,0,0,,0,8,7,0
+173949,Dread Chain Salvage,0,0,,0,8,7,0
+173950,Crestfall Salvage,0,0,,0,8,7,0
+173983,Vulpera Satchel of Salvage,0,0,,15,0,0,0
+173987,Elemental Salvage,0,0,,0,8,7,0
+173988,Havenswood Salvage,0,0,,0,8,7,0
+173989,Jorundall Salvage,0,0,,0,8,7,0
+173990,Molten Cay Salvage,0,0,,0,8,7,0
+173991,Rotting Mire Salvage,0,0,,0,8,7,0
+173992,Skittering Hollow Salvage,0,0,,0,8,7,0
+173993,Snowblossom Salvage,0,0,,0,8,7,0
+173994,Un'gol Ruins Salvage,0,0,,0,8,7,0
+173995,Venture Co. 'Salvage',0,0,,0,8,7,0
+173996,Verdant Wilds Salvage,0,0,,0,8,7,0
+173997,Whispering Reef Salvage,0,0,,0,8,7,0
+174039,Crate of Cursed Mementos,0,0,,0,8,7,0
+174181,Bag of Herbs,0,0,,0,8,7,0
+174182,Bag of Ore,0,0,,0,8,7,0
+174183,Bag of Leather,0,0,,0,8,7,0
+174184,Bag of Cloth,0,0,,0,8,7,0
+174194,Bag of Enchanting,0,0,,0,8,7,0
+174195,Bag of Gems,0,0,,0,8,7,0
+174358,Unopened Blackrock Supply Crate,0,0,,0,8,0,0
+174483,Rajani Supplies,0,0,,15,4,7,0
+174484,Uldum Accord Supplies,0,0,,15,4,7,0
+174529,Crate of Coalescing Visions,0,0,,0,8,7,0
+174630,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+174631,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+174632,Relinquished Azerite Spaulders,0,0,,0,8,7,0
+174633,Relinquished Azerite Helm,0,0,,0,8,7,0
+174634,Relinquished Azerite Helm,0,0,,0,8,7,0
+174635,Relinquished Azerite Helm,0,0,,0,8,7,0
+174636,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+174637,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+174638,Relinquished Azerite Chestpiece,0,0,,0,8,7,0
+174642,Corrupted Ny'alotha Raid Item,0,0,,0,8,7,0
+174652,Satchel of Forgotten Heirlooms,0,0,,15,4,0,0
+174958,Cache of the Fallen Mogu,0,0,,0,8,7,0
+174959,Cache of the Mantid Swarm,0,0,,0,8,7,0
+174960,Cache of the Aqir Swarm,0,0,,0,8,7,0
+174961,Cache of the Amathet,0,0,,0,8,7,0
+175095,Book of Tickets,0,0,,15,4,0,0
+175135,Atticus's Spare Supplies,0,0,,15,0,7,0
+178078,Reborn Spirit Cache,0,0,,15,4,8,0
+178128,Pouch of Shinies,0,0,,15,0,7,0
+178513,Anniversary Gift,0,0,,15,4,0,0
+178528,Winter Veil Gift,0,0,,15,0,-3,0
+178529,Gently Shaken Gift,0,0,,15,0,-3,0
+178965,Small Gardener's Satchel,0,0,,15,4,8,0
+178966,Gardener's Satchel,0,0,,15,4,8,0
+178967,Large Gardener's Satchel,0,0,,15,4,8,0
+178968,Weekly Gardener's Satchel,0,0,,15,4,8,0
+179311,Synvir Lockbox,1,3274,?,15,0,8,0
+179380,Redelev Purse,0,0,,0,8,8,0
+180085,Kyrian Keepsake,0,0,,15,4,8,0
+180128,Harvester's Elite Bounty Purse,0,0,,0,8,8,0
+180355,Ornate Pyx,0,0,,15,4,8,0
+180378,Forgemaster's Crate,0,0,,15,4,8,0
+180379,Exquisitely Woven Rug,0,0,,15,4,8,0
+180380,Lace Draperies,0,0,,15,4,8,0
+180386,Herbalist's Pouch,0,0,,15,4,8,0
+180442,Bag of Sin Stones,0,0,,15,4,7,0
+180522,Phaedrum Lockbox,1,3274,?,15,0,8,0
+180532,Oxxein Lockbox,1,3274,?,15,0,8,0
+180533,Solenium Lockbox,1,3274,?,15,0,8,0
+180646,Supplies of the Undying Army,0,0,,15,4,8,0
+180647,Ascended Supplies,0,0,,15,4,7,0
+180648,Court of Harvesters Supplies,0,0,,15,4,7,0
+180649,Wild Hunt Supplies,0,0,,15,4,7,0
+180875,Carriage Cargo,0,0,,15,4,8,0
+180974,Novice's Satchel,0,0,,15,4,8,0
+180975,Journeyman's Satchel,0,0,,15,4,8,0
+180976,Artisan's Satchel,0,0,,15,4,8,0
+180977,Spirit-Tender's Satchel,0,0,,15,4,8,0
+180979,Artisan's Large Satchel,0,0,,15,4,8,0
+180980,Journeyman's Large Satchel,0,0,,15,4,8,0
+180981,Novice's Large Satchel,0,0,,15,4,8,0
+180983,Artisan's Stuffed Satchel,0,0,,15,4,8,0
+180984,Journeyman's Stuffed Satchel,0,0,,15,4,8,0
+180985,Novice's Stuffed Satchel,0,0,,15,4,8,0
+180988,Journeyman's Overflowing Satchel,0,0,,15,4,8,0
+180989,Novice's Overflowing Satchel,0,0,,15,4,8,0
+181372,Tribute of the Ascended,0,0,,0,8,8,0
+181475,Bounty of the Grove Wardens,0,0,,0,8,8,0
+181476,Tribute of the Wild Hunt,0,0,,0,8,8,0
+181556,Tribute of the Court,0,0,,0,8,8,0
+181557,Favor of the Court,0,0,,0,8,8,0
+181732,Tribute of the Ambitious,0,0,,0,8,8,0
+181733,Tribute of the Duty-Bound,0,0,,0,8,8,0
+181739,Bag of Soul Ash,0,0,,0,8,8,0
+181741,Tribute of the Paragon,0,0,,0,8,8,0
+181767,Small Coin Purse,0,0,,15,4,8,0
+181778,Sack of Shinies,0,0,,15,0,7,0
+181779,"A ""Wrapped"" Weapon",0,0,,15,0,7,0
+181780,An Undelivered Tradesman's Shipment,0,0,,15,0,7,0
+182114,Assorted Parts and 'Things',0,0,,15,0,7,0
+182590,Vinewormed Coin Pouch,0,0,,15,4,8,0
+182591,Vinecovered Infused Rubies,0,0,,15,4,8,0
+183424,Stitched Satchel of Maldraxxi Goods,0,0,,0,8,8,0
+183426,Stitched Satchel of Fae Goods,0,0,,0,8,8,0
+183428,Stitched Satchel of Aspirant Goods,0,0,,0,8,8,0
+183429,Stitched Satchel of Venthyr Goods,0,0,,0,8,8,0
+183699,Exquisite Ingredients,0,0,,15,4,8,0
+183701,Cleansing Rite Materials,0,0,,15,4,8,0
+183702,Nature's Splendor,0,0,,15,4,8,0
+183703,Bonesmith's Satchel,0,0,,15,4,8,0
+183834,Crate of Drust Archaeology Fragments,0,0,,15,0,0,0
+183835,Crate of Zandalari Archaeology Fragments,0,0,,15,0,0,0
+183882,Collection of Random Bits,0,0,,0,8,8,0
+183883,Bulging Collection of Random Bits,0,0,,0,8,8,0
+183884,Pocketful of Assorted Nuggets,0,0,,0,8,8,0
+183885,Sika's Spare Ore Pouch,0,0,,0,8,8,0
+183886,Sika's Rare Ore Pouch,0,0,,0,8,8,0
+184045,Martial Tithe of the Court of Harvesters,0,0,,15,4,8,0
+184046,Undying Army Weapon Cache,0,0,,15,4,8,0
+184047,Ascended Chest of Arms,0,0,,15,4,8,0
+184048,Weapon Satchel of the Wild Hunt,0,0,,15,4,8,0
+184103,Cracked Blight-Touched Egg,0,0,,0,8,8,0
+184158,Oozing Necroray Egg,0,0,,15,4,0,0
+184395,Fallen Adventurer's Cache,0,0,,0,8,8,0
+184444,Supplies for the Path,0,0,,15,4,7,0
+184522,Veiled Satchel of Cooperation,0,0,,15,4,8,0
+184589,Bag of Potions,0,0,,15,4,7,0
+184627,Sacrificial Red Envelope,0,0,,0,8,8,0
+184630,Adventurer's Tailoring Cache,0,0,,15,4,8,0
+184631,Adventurer's Enchanting Cache,0,0,,15,4,8,0
+184632,Champion's Fish Cache,0,0,,15,4,8,0
+184633,Champion's Meat Cache,0,0,,15,4,8,0
+184634,Adventurer's Herbalism Cache,0,0,,15,4,8,0
+184635,Adventurer's Mining Cache,0,0,,15,4,8,0
+184636,Adventurer's Skinning Cache,0,0,,15,4,8,0
+184637,Hero's Meat Cache,0,0,,15,4,8,0
+184638,Hero's Fish Cache,0,0,,15,4,8,0
+184639,Champion's Tailoring Cache,0,0,,15,4,8,0
+184640,Champion's Skinning Cache,0,0,,15,4,8,0
+184641,Champion's Mining Cache,0,0,,15,4,8,0
+184642,Champion's Herbalism Cache,0,0,,15,4,8,0
+184643,Champion's Enchanting Cache,0,0,,15,4,8,0
+184644,Hero's Tailoring Cache,0,0,,15,4,8,0
+184645,Hero's Skinning Cache,0,0,,15,4,8,0
+184646,Hero's Mining Cache,0,0,,15,4,8,0
+184647,Hero's Herbalism Cache,0,0,,15,4,8,0
+184648,Hero's Enchanting Cache,0,0,,15,4,8,0
+184810,Plundered Supplies,0,0,,15,0,7,0
+184811,Artemede's Bounty,0,0,,15,4,8,0
+184812,Apolon's Bounty,0,0,,15,4,8,0
+184843,Salvaged Supplies,0,0,,15,4,8,0
+184868,Cache of Nathrian Treasures,0,0,,15,4,8,0
+184869,Cache of Nathrian Treasures,0,0,,15,4,8,0
+185765,Shipment of Heavy Callous Hide,0,0,,0,8,8,0
+185832,Shipment of Elethium Ore,0,0,,0,8,8,0
+185833,Shipment of Lightless Silk,0,0,,0,8,8,0
+185834,Orboreal Distinguishment,0,0,,0,8,8,0
+185906,Anniversary Gift,0,0,,15,4,0,0
+185972,Tormentor's Cache,0,0,,15,4,8,0
+185990,Harvester's War Chest,0,0,,0,8,8,0
+185991,War Chest of the Wild Hunt,0,0,,0,8,8,0
+185992,War Chest of the Undying Army,0,0,,0,8,8,0
+185993,Ascended War Chest,0,0,,0,8,8,0
+186160,Locked Artifact Case,1,3274,?,15,0,8,0
+186161,Stygian Lockbox,1,3274,?,15,0,8,0
+186196,Death's Advance War Chest,0,0,,0,8,8,0
+186531,Cache of Sanctum Treasures,0,0,,15,4,8,0
+186533,Cache of Sanctum Treasures,0,0,,15,4,8,0
+186650,Death's Advance Supplies,0,0,,15,4,8,0
+186680,Gold Filled Boot,0,0,,15,4,8,0
+186688,Gold Filled Wash Bucket,0,0,,15,4,8,0
+186690,Gold Filled Barrel,0,0,,15,4,8,0
+186691,Gold Filled Satchel,0,0,,15,4,8,0
+186692,Gold Filled Helmet,0,0,,15,4,8,0
+186693,Gold Filled Wheelbarrow,0,0,,15,4,8,0
+186694,Shaded Bag of Ore,0,0,,7,11,8,0
+186705,Gold Filled Chalice,0,0,,15,4,8,0
+186706,Gold Filled Hat,0,0,,15,4,8,0
+186707,Gold Filled Crate,0,0,,15,4,8,0
+186708,Gold Filled Paint Brush Cup,0,0,,15,4,8,0
+186970,Feeder's Hand and Key,0,0,,15,4,8,0
+186971,Feeder's Hand,0,0,,15,4,8,0
+187028,Supplies of the Archivists' Codex,0,0,,15,4,8,0
+187029,Mysterious Gift from Ve'nari,0,0,,15,4,8,0
+187182,Hatching Corpsefly Egg,0,0,,15,4,8,0
+187221,Soul Ash Cache,0,0,,15,4,8,0
+187222,Stygic Singularity,0,0,,0,8,8,0
+187254,Arrangement of Anima,0,0,,0,8,8,0
+187278,Talon-Pierced Mawsworn Lockbox,0,0,,15,4,8,0
+187346,Lost Memento,0,0,,15,4,8,0
+187351,Stygic Cluster,0,0,,0,8,8,0
+187354,Abandoned Broker Satchel,0,0,,15,4,8,0
+187440,Feather-Stuffed Helm,0,0,,15,4,8,0
+187503,Bundle of Archived Research,0,0,,15,4,8,0
+187520,Gently Shaken Gift,0,0,,15,0,-3,0
+187543,Death's Advance War Chest,0,0,,0,8,8,0
+187551,Small Korthian Supply Chest,0,0,,0,8,8,0
+187561,Winter Veil Gift,0,0,,15,0,-3,0
+187569,Brokers' Tailoring Mote of Potentiation,0,0,,15,4,8,0
+187570,Brokers' Skinning Mote of Potentiation,0,0,,15,4,8,0
+187571,Brokers' Mining Mote of Potentiation,0,0,,15,4,8,0
+187572,Brokers' Herbalism Mote of Potentiation,0,0,,15,4,8,0
+187573,Brokers' Enchanting Mote of Potentiation,0,0,,15,4,8,0
+187574,Brokers' Overflowing Bucket,0,0,,15,4,8,0
+187575,Korthian Fishing Cache,0,0,,15,4,8,0
+187576,Korthian Skinning Cache,0,0,,15,4,8,0
+187577,Korthian Meat Cache,0,0,,15,4,8,0
+187596,Broken Isles Meat Delivery,0,0,,15,4,8,0
+187597,Broken Isles Fish Delivery,0,0,,15,4,8,0
+187598,Broken Isles Cloth Delivery,0,0,,15,4,8,0
+187599,Broken Isles Herb Delivery,0,0,,15,4,8,0
+187600,Broken Isles Ore Delivery,0,0,,15,4,8,0
+187601,Broken Isles Leather Delivery,0,0,,15,4,8,0
+187604,Broken Isles Enchantment Delivery,0,0,,15,4,8,0
+187605,Broken Isles Gem Delivery,0,0,,15,4,8,0
+187659,Adventurer's Footlocker,0,0,,0,8,7,0
+187710,Anniversary Gift,0,0,,15,4,0,0
+187780,Enlightened Broker Supplies,0,0,,15,4,8,0
+187781,Olea Cache,0,0,,15,4,8,0
+187787,Ephemera Orb,0,0,,15,4,8,0
+187817,Korthite Crystal Geode,0,0,,0,8,8,0
+188787,Locked Broker Luggage,1,3274,?,15,0,8,0
+189765,Maruuk Centaur Supply Satchel,0,0,,15,4,9,0
+190178,Pouch of Protogenic Provisions,0,0,,15,4,8,0
+190233,Maruuk Centaur Supplies,0,0,,15,4,9,0
+190382,Warped Pocket Dimension,0,0,,15,0,8,0
+190610,Tribute of the Enlightened Elders,0,0,,0,8,8,0
+190655,Cache of Sepulcher Treasures,0,0,,15,4,8,0
+190656,Cache of Sepulcher Treasures,0,0,,15,4,8,0
+190823,Firim's Mysterious Cache,0,0,,15,4,8,0
+190954,Serevite Lockbox,1,3405,?,15,0,9,0
+191030,Cosmic Flux Parcel,0,0,,15,4,8,0
+191040,Cache of Sepulcher Treasures,0,0,,15,4,8,0
+191041,Cache of Sepulcher Treasures,0,0,,15,4,8,0
+191139,Tribute of the Enlightened Elders,0,0,,0,8,8,0
+191203,Dragonscale Expedition Supplies,0,0,,15,4,9,0
+191296,Enchanted Lockbox,1,3421,?,15,0,8,0
+191301,Treatise on Patterns in the Purpose,0,0,,15,4,8,0
+191302,Bottled Night Sky,0,0,,15,4,8,0
+191303,Overflowing Chest of Riches,0,0,,15,4,8,0
+191701,Bag of Explored Souls,0,0,,0,8,8,0
+192093,Gently Shaken Gift,0,0,,15,0,-3,0
+192094,Winter Veil Gift,0,0,,15,0,-3,0
+192437,Cache of Fated Treasures,0,0,,15,4,8,0
+192438,Cache of Fated Treasures,0,0,,15,4,8,0
+192888,Queen's Gift,0,0,,7,4,9,0
+192889,Dreamer's Vision,0,0,,7,4,9,0
+192890,Keeper's Glory,0,0,,7,4,9,0
+192891,Earthwarden's Prize,0,0,,7,4,9,0
+192892,Timewatcher's Patience,0,0,,7,4,9,0
+192893,Jeweled Dragon's Heart,0,0,,7,4,9,0
+193376,Adenedal's Tidy Purse,0,0,,12,0,9,0
+194037,Heavy Chest,1,3452,?,15,4,9,0
+194072,Sack of Gold,0,0,,15,4,9,0
+194419,Life Pool Herb Pouch,0,0,,15,4,9,0
+194750,Professional Equipment,0,0,,15,4,9,0
+198166,Suspiciously Ticking Crate,0,0,,15,4,9,0
+198167,Suspiciously Ticking Crate,0,0,,15,4,9,0
+198168,Suspiciously Ticking Crate,0,0,,15,4,9,0
+198169,Suspiciously Silent Crate,0,0,,15,4,9,0
+198170,Suspiciously Silent Crate,0,0,,15,4,9,0
+198171,Suspiciously Silent Crate,0,0,,15,4,9,0
+198172,Bundle of Fireworks,0,0,,0,8,9,0
+198438,Draconic Recipe in a Bottle,0,0,,15,4,9,0
+198657,Forgotten Jewelry Box,1,3405,?,15,4,9,0
+198863,Small Dragon Expedition Supply Pack,0,0,,15,4,9,0
+198864,Large Maruuk Centaur Supply Satchel,0,0,,15,4,9,0
+198865,Large Dragon Expedition Supply Pack,0,0,,15,4,9,0
+198866,Small Iskaaran Supply Pack,0,0,,15,4,9,0
+198867,Large Iskaaran Supply Pack,0,0,,15,4,9,0
+198868,Small Valdrakken Accord Supply Pack,0,0,,15,4,9,0
+198869,Large Valdrakken Accord Supply Pack,0,0,,15,4,9,0
+199108,Bag of Discount Goods,0,0,,15,4,9,0
+199192,Dragon Racer's Purse,0,0,,15,4,9,0
+199341,Regurgitated Sac of Swog Treasures,0,0,,7,11,9,0
+199342,Weighted Sac of Swog Treasures,0,0,,7,11,9,0
+199472,Overflowing Dragon Expedition Supply Pack,0,0,,15,4,9,0
+199473,Overflowing Iskaaran Supply Pack,0,0,,15,4,9,0
+199474,Overflowing Maruuk Centaur Supply Satchel,0,0,,15,4,9,0
+199475,Overflowing Valdrakken Accord Supply Pack,0,0,,15,4,9,0
+200069,Obsidian Cache,0,0,,0,8,9,0
+200070,Obsidian Strongbox,0,0,,0,8,9,0
+200072,Dragonbane Keep Strongbox,0,0,,0,8,9,0
+200073,Valdrakken Treasures,0,0,,0,8,9,0
+200094,Caravan Strongbox,0,0,,0,8,9,0
+200095,Supply-Laden Soup Pot,0,0,,0,8,9,0
+200156,Amethyzarite Geode,0,0,,7,4,9,0
+200300,Sack of Looted Treasures,0,0,,15,0,9,0
+200468,Grand Hunt Spoils,0,0,,0,8,9,0
+200477,Stack of VIP Passes,0,0,,15,4,0,0
+200513,Grand Hunt Spoils,0,0,,0,8,9,0
+200515,Grand Hunt Spoils,0,0,,0,8,9,0
+200516,Grand Hunt Spoils,0,0,,0,8,9,0
+200609,Dragon Racing Purse - First Place,0,0,,15,4,9,0
+200610,Dragon Racing Purse - Second Place,0,0,,15,4,9,0
+200611,Dragon Racing Purse - Third Place,0,0,,15,4,9,0
+200931,Encaged Fiery Soul,0,0,,15,4,9,0
+200932,Encaged Airy Soul,0,0,,15,4,9,0
+200934,Encaged Frosty Soul,0,0,,15,4,9,0
+200936,Encaged Earthen Soul,0,0,,15,4,9,0
+201250,Victorious Contender's Strongbox,0,0,,0,8,9,0
+201251,Pillaged Contender's Strongbox,0,0,,0,8,9,0
+201296,Docile Airy Soul,0,0,,15,4,9,0
+201297,Docile Earthen Soul,0,0,,15,4,9,0
+201298,Docile Fiery Soul,0,0,,15,4,9,0
+201299,Docile Frosty Soul,0,0,,15,4,9,0
+201326,Draconic Satchel of Cooperation,0,0,,15,4,9,0
+201343,Bag of Cloth Armor Reagents,0,0,,15,4,9,0
+201352,Bag of Leather Reagents,0,0,,15,4,9,0
+201353,Bag of Mail Armor Reagents,0,0,,15,4,9,0
+201354,Bag of Plate Armor Reagents,0,0,,15,4,9,0
+201439,Renewed Dream,0,0,,15,4,9,0
+201462,Curiously-Shaped Stomach,0,0,,0,8,9,0
+201728,Vakril's Strongbox,0,0,,0,8,9,0
+201754,Obsidian Forgemaster's Cache,0,0,,0,8,9,0
+201755,Obsidian Forgemaster's Strongbox,0,0,,0,8,9,0
+201756,Bulging Coin Purse,0,0,,15,0,9,0
+201757,Plundered Supplies,0,0,,15,0,9,0
+201817,Twilight Cache,0,0,,0,8,9,0
+201818,Twilight Strongbox,0,0,,0,8,9,0
+202048,Queen's Gift,0,0,,7,4,9,0
+202049,Dreamer's Vision,0,0,,7,4,9,0
+202050,Keeper's Glory,0,0,,7,4,9,0
+202051,Earthwarden's Prize,0,0,,7,4,9,0
+202052,Timewatcher's Patience,0,0,,7,4,9,0
+202054,Queen's Gift,0,0,,7,4,9,0
+202055,Dreamer's Vision,0,0,,7,4,9,0
+202056,Keeper's Glory,0,0,,7,4,9,0
+202057,Earthwarden's Prize,0,0,,7,4,9,0
+202058,Timewatcher's Patience,0,0,,7,4,9,0
+202079,Cache of Vault Treasures,0,0,,15,4,9,0
+202080,Cache of Vault Treasures,0,0,,15,4,9,0
+202097,Bulging Box of Skins and Scales,0,0,,15,4,9,0
+202098,Crowded Crate of Mined Materials,0,0,,15,4,9,0
+202099,Stocked Sack of Hale Herbs,0,0,,15,4,9,0
+202100,Populous Pack of Castoff Cloth,0,0,,15,4,9,0
+202101,Topped Trunk of Disenchanted Detritus,0,0,,15,4,9,0
+202102,Immaculate Sac of Swog Treasures,0,0,,7,11,9,0
+202122,Primal Chaos Cluster,0,0,,15,4,9,0
+202142,Dragonbane Keep Strongbox,0,0,,0,8,9,0
+202172,Overflowing Satchel of Coins,0,0,,15,0,9,0
+202183,Small Rumble Purse,0,0,,12,0,9,0
+202371,Glowing Primalist Cache,0,0,,0,8,9,0
+203210,Dragonscale Supply Box,0,0,,15,4,9,0
+203217,Dragonscale Surplus Crate,0,0,,15,4,9,0
+203218,Iskaara Supply Pouch,0,0,,15,4,9,0
+203220,Iskaara Surplus Bag,0,0,,15,4,9,0
+203221,Maruuk Supply Sack,0,0,,15,4,9,0
+203222,Maruuk Surplus Bundle,0,0,,15,4,9,0
+203223,Valdrakken Supply Coffer,0,0,,15,4,9,0
+203224,Valdrakken Surplus Chest,0,0,,15,4,9,0
+203434,Bottomless Bag of Blacksmithing Goods,0,0,,0,8,9,0
+203435,Bottomless Bag of Alchemy Goods,0,0,,0,8,9,0
+203436,Bottomless Bag of Enchanting Goods,0,0,,0,8,9,0
+203437,Bottomless Bag of Engineering Goods,0,0,,0,8,9,0
+203438,Bottomless Bag of Inscription Goods,0,0,,0,8,9,0
+203439,Bottomless Bag of Jewelcrafting Goods,0,0,,0,8,9,0
+203440,Bottomless Bag of Leatherworking Goods,0,0,,0,8,9,0
+203441,Bottomless Bag of Tailoring Goods,0,0,,0,8,9,0
+203444,Bottomless Bag of Dragon Isles General Goods,0,0,,0,8,9,0
+203447,Bottomless Bag of Optional Goods,0,0,,0,8,9,0
+203448,Bottomless Bag of Ore,0,0,,0,8,9,0
+203449,Bottomless Bag of Herbs,0,0,,0,8,9,0
+203450,Bottomless Bag of Skins,0,0,,0,8,9,0
+203476,Primalist Cache,0,0,,0,8,9,0
+203681,Stormed Primalist Cache,0,0,,0,8,9,0
+203699,Tattered Gift Package,0,0,,15,0,9,0
+203700,Tattered Gift Package,0,0,,15,0,9,0
+203724,Field Medic's Hazard Payout,0,0,,0,8,9,0
+203730,Rustic Winterpelt Supplies,0,0,,15,4,9,0
+203742,Waterlogged Gurubashi Cache,0,0,,15,0,9,0
+203743,Jostled Gurubashi Cache,1,1559,?,15,0,9,0
+203774,Big Bag o' Bijous,0,0,,15,4,9,0
+203912,Penny Pouch o' Paragons,0,0,,15,4,9,0
+203959,Gurubashi Tribute,0,0,,15,4,9,0
+204307,Ornate Bronze Lockbox,1,5,?,15,0,0,0
+204346,Arclight Rumble Foil Box,0,0,,12,0,9,0
+204359,Reach Racer's Purse,0,0,,15,4,9,0
+204378,Brimming Dragonscale Expedition Supply Pack,0,0,,15,4,9,0
+204379,Brimming Iskaaran Supply Pack,0,0,,15,4,9,0
+204380,Brimming Maruuk Centaur Supply Satchel,0,0,,15,4,9,0
+204381,Brimming Valdrakken Accord Supply Pack,0,0,,15,4,9,0
+204383,Sack of Oddities,0,0,,15,4,9,0
+204403,Sack of Sack of Oddities,0,0,,15,4,9,0
+204636,Snarfang's Stomach Sac,0,0,,7,11,9,0
+204712,Brimming Loamm Niffen Supply Satchel,0,0,,15,4,9,0
+204721,Whelpling's Small Chest,0,0,,15,4,9,0
+204722,Whelpling's Bountiful Chest,0,0,,15,4,9,0
+204723,Whelpling's Hefty Chest,0,0,,15,4,9,0
+204724,Drake's Small Chest,0,0,,15,4,9,0
+204725,Drake's Hefty Chest,0,0,,15,4,9,0
+204726,Drake's Bountiful Chest,0,0,,15,4,9,0
+204911,Propagated Spore,0,0,,7,9,9,0
+205226,Cavern Racer's Purse,0,0,,15,4,9,0
+205247,Clinking Dirt-Covered Pouch,0,0,,15,4,9,0
+205248,Clanging Dirt-Covered Pouch,0,0,,15,4,9,0
+205288,Buried Niffen Collection,0,0,,15,4,9,0
+205346,Hidden Niffen Treasure,0,0,,15,4,9,0
+205347,Gathered Niffen Resources,0,0,,15,4,9,0
+205367,Indebted Researcher's Gift,0,0,,15,4,9,0
+205368,Thankful Researcher's Gift,0,0,,15,4,9,0
+205369,Appreciative Researcher's Gift,0,0,,15,4,9,0
+205370,Researcher's Gift,0,0,,15,4,9,0
+205371,Appreciative Researcher's Scrounged Goods,0,0,,15,4,9,0
+205372,Indebted Researcher's Scrounged Goods,0,0,,15,4,9,0
+205373,Researcher's Scrounged Goods,0,0,,15,4,9,0
+205374,Thankful Researcher's Scrounged Goods,0,0,,15,4,9,0
+205877,Adventurer's Footlocker,0,0,,0,8,7,0
+205964,Small Loammian Supply Pack,0,0,,15,4,9,0
+205965,Large Loammian Supply Pack,0,0,,15,4,9,0
+205966,Cache of Aberrus Treasures,0,0,,15,4,9,0
+205967,Cache of Aberrus Treasures,0,0,,15,4,9,0
+205968,Overflowing Loammian Supply Pack,0,0,,15,4,9,0
+205983,Scentsational Niffen Treasures,0,0,,0,8,9,0
+206028,Chest of Gold,0,0,,15,4,9,0
+206039,Enmity Bundle,0,0,,15,4,0,0
+206135,Heroic Dungeon Delver's Trophy Chest,0,0,,0,8,9,0
+206136,Heroic Dungeon Delver's Trophy Crest,0,0,,0,8,9,0
+206271,Malicia's Hoard,0,0,,0,8,9,0
+207050,Warmonger's Plate Gear Bag,0,0,,15,4,-3,0
+207051,Warmonger's Plate Equipment Bag,0,0,,15,4,-3,0
+207052,Jingoist's Plate Equipment Bag,0,0,,15,4,-3,0
+207053,Jingoist's Plate Gear Bag,0,0,,15,4,-3,0
+207063,Jingoist's Mail Equipment Bag,0,0,,15,4,-3,0
+207064,Jingoist's Mail Gear Bag,0,0,,15,4,-3,0
+207065,Warmonger's Mail Gear Bag,0,0,,15,4,-3,0
+207066,Warmonger's Mail Equipment Bag,0,0,,15,4,-3,0
+207067,Jingoist's Leather Gear Bag,0,0,,15,4,-3,0
+207068,Jingoist's Leather Equipment Bag,0,0,,15,4,-3,0
+207069,Warmonger's Leather Equipment Bag,0,0,,15,4,-3,0
+207070,Warmonger's Leather Gear Bag,0,0,,15,4,-3,0
+207071,Jingoist's Cloth Gear Bag,0,0,,15,4,-3,0
+207072,Jingoist's Cloth Equipment Bag,0,0,,15,4,-3,0
+207073,Warmonger's Cloth Equipment Bag,0,0,,15,4,-3,0
+207074,Warmonger's Cloth Gear Bag,0,0,,15,4,-3,0
+207075,Jingoist's Plate Armor Bag,0,0,,15,4,-3,0
+207076,Warmonger's Plate Armor Bag,0,0,,15,4,-3,0
+207077,Warmonger's Mail Armor Bag,0,0,,15,4,-3,0
+207078,Jingoist's Mail Armor Bag,0,0,,15,4,-3,0
+207079,Warmonger's Leather Armor Bag,0,0,,15,4,-3,0
+207080,Jingoist's Leather Armor Bag,0,0,,15,4,-3,0
+207081,Warmonger's Cloth Armor Bag,0,0,,15,4,-3,0
+207082,Jingoist's Cloth Armor Bag,0,0,,15,4,-3,0
+207093,Jingoist's Mail Suit Bag,0,0,,15,4,9,0
+207094,Warmonger's Leather Suit Bag,0,0,,15,4,9,0
+207096,Paracausal Chest,0,0,,15,4,9,0
+207582,Box of Tampered Reality,0,0,,15,4,9,0
+207583,Box of Collapsed Reality,0,0,,15,4,9,0
+207584,Box of Volatile Reality,0,0,,15,4,9,0
+207594,Looter's Purse,0,0,,0,8,9,0
+208006,Greater Paracausal Chest,0,0,,15,4,9,0
+208015,Stuffed Deviate Scale Pouch,0,0,,15,0,0,0
+208028,Knot Thimblejack's Cache,0,0,,15,0,0,0
+208054,A Mystery Box,0,0,,15,0,0,0
+208090,Contained Paracausality,0,0,,15,4,9,0
+208091,Cache of Timewarped Treasures,0,0,,15,4,9,0
+208094,Cache of Timewarped Treasures,0,0,,15,4,9,0
+208095,Cache of Timewarped Treasures,0,0,,15,4,9,0
+208211,Anniversary Gift,0,0,,15,4,0,0
+208691,Argunite Cluster,0,0,,15,4,9,0
+208878,Adventurer's Footlocker,0,0,,0,8,7,0
+209024,Loot-Filled Pumpkin,0,0,,15,0,-3,0
+209026,Loot-Stuffed Pumpkin,0,0,,15,0,-3,0
+209036,Cache of Amirdrassil Treasures,0,0,,15,4,9,0
+209037,Cache of Amirdrassil Treasures,0,0,,15,4,9,0
+209831,Wyrm's Bountiful Chest,0,0,,15,4,9,0
+209832,Crate of Dreambound Leather,0,0,,15,4,9,0
+209833,Crate of Dreambound Armor,0,0,,15,4,9,0
+209834,Crate of Dreambound Mail,0,0,,15,4,9,0
+209835,Crate of Dreambound Plate,0,0,,15,4,9,0
+209871,Winter Veil Gift,0,0,,15,0,-3,0
+210062,Ironbound Satchel of Helpful Goods,0,0,,15,4,5,0
+210063,Invader's Satchel of Helpful Goods,0,0,,15,4,6,0
+210180,Emerald Flightstone,0,0,,15,0,9,0
+210217,Small Dreamy Bounty,0,0,,15,4,9,0
+210218,Plump Dreamy Bounty,0,0,,15,4,9,0
+210219,Gigantic Dreamy Bounty,0,0,,15,4,9,0
+210224,Small Emerald Bloom,0,0,,15,4,9,0
+210225,Medium Emerald Bloom,0,0,,15,4,9,0
+210226,Large Emerald Bloom,0,0,,15,4,9,0
+210549,Dream Racer's Purse,0,0,,15,4,9,0
+210657,Gently Shaken Gift,0,0,,15,0,-3,0
+210726,Ruby Flightstone,0,0,,15,0,9,0
+210758,Honorable Satchel of Fabrics,0,0,,15,4,9,0
+210759,Honorable Satchel of Ore,0,0,,15,4,9,0
+210760,Honorable Satchel of Herbs,0,0,,15,4,9,0
+210872,Satchel of Dreams,0,0,,0,8,9,0
+210991,Small Box of Vials,0,0,,0,8,9,0
+210992,Overflowing Dream Warden Trove,0,0,,15,4,9,0
+211279,Cache of Infinite Treasure,0,0,,15,4,4,0
+211303,Dryad's Supply Pouch,0,0,,15,4,9,0
+211373,Bag of Many Wonders,0,0,,15,4,9,0
+211388,Timerunner's Starter Kit,0,0,,15,4,4,0
+211389,Cache of Overblooming Treasures,0,0,,15,4,9,0
+211394,Harvested Dreamseed Cache,0,0,,15,4,9,0
+211410,Bloomed Wildling Cache,0,0,,15,4,9,0
+211411,Sprouting Dreamtrove,0,0,,15,4,9,0
+211413,Budding Dreamtrove,0,0,,15,4,9,0
+211414,Blossoming Dreamtrove,0,0,,15,4,9,0
+211429,Bundle of Love Tokens,0,0,,15,3,-3,0
+211430,Bundle of Love Tokens,0,0,,15,3,-3,0
+212157,An Invitation,0,0,,12,0,9,0
+212458,Awakened Flightstone,0,0,,15,0,9,0
+213175,Dusty Djaradin Tome,0,0,,15,4,9,0
+213176,Preserved Isles Tome,0,0,,15,4,9,0
+213177,Immaculate Tome,0,0,,15,4,9,0
+213185,Dusty Centaur Tome,0,0,,15,4,9,0
+213186,Dusty Niffen Tome,0,0,,15,4,9,0
+213187,Dusty Drakonid Tome,0,0,,15,4,9,0
+213188,Dusty Dracthyr Tome,0,0,,15,4,9,0
+213189,Preserved Dragonkin Tome,0,0,,15,4,9,0
+213190,Preserved Djaradin Tome,0,0,,15,4,9,0
+213428,Loot-Stuffed Basket,0,0,,15,0,-3,0
+213429,Meticulous Archivist's Appendix,0,0,,15,4,9,0
+213541,Whelpling's Bountiful Chest,0,0,,15,4,9,0
+213779,Algari Amber Prism,0,0,,7,11,10,0
+213780,Algari Amber Prism,0,0,,7,11,10,0
+213781,Algari Amber Prism,0,0,,7,11,10,0
+213782,Algari Emerald Prism,0,0,,7,11,10,0
+213783,Algari Emerald Prism,0,0,,7,11,10,0
+213784,Algari Emerald Prism,0,0,,7,11,10,0
+213785,Algari Ruby Prism,0,0,,7,11,10,0
+213786,Algari Ruby Prism,0,0,,7,11,10,0
+213787,Algari Ruby Prism,0,0,,7,11,10,0
+213788,Algari Onyx Prism,0,0,,7,11,10,0
+213789,Algari Onyx Prism,0,0,,7,11,10,0
+213790,Algari Onyx Prism,0,0,,7,11,10,0
+213791,Algari Sapphire Prism,0,0,,7,11,10,0
+213792,Algari Sapphire Prism,0,0,,7,11,10,0
+213793,Algari Sapphire Prism,0,0,,7,11,10,0
+215160,The Big Dig Rig,0,0,,15,4,9,0
+215359,Very Large Valdrakken Accord Supply Pack,0,0,,15,4,9,0
+215362,Cache of Storms,0,0,,0,8,9,0
+215363,Cache of Embers,0,0,,0,8,9,0
+215364,Cache of Dreams,0,0,,0,8,9,0
+216638,Timerunner's Intro Kit,0,0,,15,4,4,0
+216874,Loot-Filled Basket,0,0,,15,0,-3,0
+217011,Amateur Actor's Chest,0,0,,15,4,9,0
+217012,Novice Actor's Chest,0,0,,15,4,9,0
+217013,Expert Actor's Chest,0,0,,15,4,9,0
+217109,Cache of Awakened Storms,0,0,,0,8,9,0
+217110,Cache of Awakened Embers,0,0,,0,8,9,0
+217111,Cache of Awakened Dreams,0,0,,0,8,9,0
+217382,Ruby Flightstone,0,0,,15,0,9,0
+217411,Blackened Flightstone,0,0,,15,0,9,0
+217412,Blackened Flightstone,0,0,,15,0,9,0
+217705,Pirate's Booty,0,0,,15,4,9,0
+217728,Cache of Awakened Treasures,0,0,,15,4,9,0
+217729,Cache of Awakened Treasures,0,0,,15,4,9,0
+218130,Adventurer's Footlocker,0,0,,0,8,9,0
+218309,Gently Shaken Gift,0,0,,15,0,-3,0
+218311,Winter Veil Gift,0,0,,15,0,-3,0
+218738,Bizarrely Shaped Stomach,0,0,,0,8,10,0
+219218,Timerunner's Starter Kit,0,0,,15,4,4,0
+219219,Timerunner's Starter Kit,0,0,,15,4,4,0
+220376,Bismuth Lockbox,1,3827,?,15,0,10,0
+221269,Crimson Valorstone,0,0,,15,0,10,0
+221503,Explorer's Warbound Battlegear Drop,0,0,,15,4,10,0
+221509,Timerunner's Weaponry,0,0,,15,4,4,0
+222977,Scorched Junk,0,0,,15,4,10,0
+223619,Bronze Celebration Goodie Bag,0,0,,15,4,-3,0
+223620,20th Anniversary Cache,0,0,,15,4,9,0
+223621,20th Anniversary Cache,0,0,,15,4,9,0
+223622,20th Anniversary Cache,0,0,,15,4,9,0
+223908,Minor Bronze Cache,0,0,,15,4,4,0
+223909,Lesser Bronze Cache,0,0,,15,4,4,0
+223910,Bronze Cache,0,0,,15,4,4,0
+223911,Greater Bronze Cache,0,0,,15,4,4,0
+223953,Timerunner's Parting Pack,0,0,,15,4,-3,0
+224027,Bottomless Bag of Khaz Algar Herbs,0,0,,0,8,10,0
+224028,Bottomless Bag of Khaz Algar Ore,0,0,,0,8,10,0
+224029,Bottomless Bag of Khaz Algar Skins,0,0,,0,8,10,0
+224030,Bottomless Bag of Khaz Algar Alchemy Goods,0,0,,0,8,10,0
+224031,Bottomless Bag of Khaz Algar Blacksmithing Goods,0,0,,0,8,10,0
+224032,Bottomless Bag of Khaz Algar Enchanting Goods,0,0,,0,8,10,0
+224033,Bottomless Bag of Khaz Algar Engineering Goods,0,0,,0,8,10,0
+224034,Bottomless Bag of Khaz Algar Inscription Goods,0,0,,0,8,10,0
+224035,Bottomless Bag of Khaz Algar Jewelcrafting Goods,0,0,,0,8,10,0
+224037,Bottomless Bag of Khaz Algar Leatherworking Goods,0,0,,0,8,10,0
+224039,Bottomless Bag of Khaz Algar Tailoring Goods,0,0,,0,8,10,0
+224040,Bottomless Bag of Khaz Algar Optional Goods,0,0,,0,8,10,0
+224100,Bottomless Bag of Khaz Algar General Goods,0,0,,0,8,10,0
+224120,Timerunner's Gem Box,0,0,,15,4,4,0
+224156,Bottomless Bag of Khaz Algar General Goods,0,0,,0,8,9,0
+224296,Basket of Draconic Flowers,0,0,,12,0,9,0
+224547,Timewarped Pouch,0,0,,15,4,-3,0
+224556,Glorious Contender's Strongbox,0,0,,0,8,10,0
+224557,Field Medic's Hazard Payout,0,0,,0,8,10,0
+224573,Crystal Satchel of Cooperation,0,0,,15,4,10,0
+224586,Box o' Booms,0,0,,15,4,10,0
+224587,Box o' Booms,0,0,,15,4,10,0
+224588,Box o' Booms,0,0,,15,4,10,0
+224650,Wax-Sealed Pouch,0,0,,15,4,10,0
+224721,Wax-Sealed Box,0,0,,15,4,10,0
+224722,Waxy Bundle of Resonance Crystals,0,0,,15,4,10,0
+224723,Waxy Bundle of Leather,0,0,,15,4,10,0
+224724,Waxy Bundle of Dust,0,0,,15,4,10,0
+224725,Waxy Bundle of Herbs,0,0,,15,4,10,0
+224726,Waxy Box of Rocks,0,0,,15,4,10,0
+224784,Pinnacle Cache,0,0,,0,8,10,0
+224913,Radiant Fuel Cache,0,0,,15,4,10,0
+224941,Radiant Fuel Cache,0,0,,15,4,10,0
+225239,Overflowing Council of Dornogal Trove,0,0,,15,4,10,0
+225245,Overflowing Trove of the Deeps,0,0,,15,4,10,0
+225246,Overflowing Hallowfall Trove,0,0,,15,4,10,0
+225247,Overflowing Severed Threads Trove,0,0,,15,4,10,0
+225571,The Weaver's Gratuity,0,0,,0,0,10,0
+225572,The General's War Chest,0,0,,0,0,10,0
+225573,The Vizier's Capital,0,0,,0,0,10,0
+225739,Algari Distinguishment,0,0,,0,8,10,0
+225881,Big Bag of Barter Boulders,0,0,,15,4,9,0
+225896,Void-Touched Valorstone,0,0,,15,0,10,0
+226045,The General's Trove,0,0,,15,4,10,0
+226100,The Vizier's Trove,0,0,,15,4,10,0
+226101,Chromie's Tour Goodie Bag,0,0,,15,4,9,0
+226102,Chromie's Tour Goodie Bag,0,0,,15,4,-3,0
+226103,The Weaver's Trove,0,0,,15,4,10,0
+226146,Handful of Humming Shinies,0,0,,0,8,10,0
+226148,Wax-Sealed Weathered Crests,0,0,,0,8,10,0
+226149,Pile of Humming Shinies,0,0,,0,8,10,0
+226150,Gem-Studded Candelabra,0,0,,0,8,10,0
+226151,Wax-Coated Coffer Unlocker,0,0,,0,8,10,0
+226152,Wax-sealed Crests,0,0,,0,8,10,0
+226153,Big Pile of Humming Shinies,0,0,,0,8,10,0
+226154,Wax-Sealed Crafty Crest,0,0,,0,8,10,0
+226193,Cache of Nerubian Treasures,0,0,,15,4,10,0
+226194,Cache of Nerubian Treasures,0,0,,15,4,10,0
+226195,Resonance Crystal Cluster,0,0,,15,4,10,0
+226196,Silk Kej Pouch,0,0,,15,4,10,0
+226198,Resonance Crystal Agglomeration,0,0,,15,4,10,0
+226199,Silk Kej Purse,0,0,,15,4,10,0
+226256,Token of the Remembrancers,0,0,,15,4,-3,0
+226263,Theater Troupe's Trove,0,0,,0,0,10,0
+226264,Radiant Cache,0,0,,0,0,10,0
+226273,Awakened Mechanical Cache,0,0,,0,0,10,0
+226813,Golden Valorstone,0,0,,15,0,10,0
+226814,Chest of Gold,0,0,,15,4,10,0
+227450,Sky Racer's Purse,0,0,,15,4,10,0
+227675,Satchel of Surplus Herbs,0,0,,0,8,10,0
+227676,Satchel of Surplus Ore,0,0,,0,8,10,0
+227681,Satchel of Surplus Leather,0,0,,0,8,10,0
+227682,Satchel of Surplus Cloth,0,0,,0,8,10,0
+227713,Artisan's Consortium Payout,0,0,,15,4,10,0
+227792,Everyday Cache,0,0,,0,0,10,0
+228220,Waxy Bundle,0,0,,15,4,10,0
+228337,Satchel of Surplus Dust,0,0,,0,8,10,0
+228361,Seasoned Adventurer's Cache,0,0,,0,8,10,0
+228741,Lamplighter Supply Satchel,0,0,,15,4,10,0
+228910,Cache of Nerubian Treasures,0,0,,15,4,10,0
+228916,Algari Tailor's Satchel,0,0,,15,4,10,0
+228917,Satchel of Ore,0,0,,15,4,10,0
+228918,Satchel of Leather,0,0,,15,4,10,0
+228919,Satchel of Algari Herbs,0,0,,15,4,10,0
+228920,Satchel of Chitin,0,0,,15,4,10,0
+228931,Algari Enchanter's Satchel,0,0,,15,4,10,0
+228932,Algari Engineer's Satchel,0,0,,15,4,10,0
+228933,Algari Leatherworker's Satchel,0,0,,15,4,10,0
+228959,Pile of Unidentified Meat,0,0,,0,8,10,0
+229005,Cache of Earthen Treasures,0,0,,15,4,10,0
+229006,Cache of Earthen Treasures,0,0,,15,4,10,0
+229129,Cache of Delver's Spoils,0,0,,15,4,10,0
+229130,Cache of Delver's Spoils,0,0,,15,4,10,0
+229354,Algari Adventurer's Cache,0,0,,0,8,10,0
+229355,Chromie's Premium Goodie Bag,0,0,,15,4,-3,0
+229359,Chromie's Goodie Bag,0,0,,15,4,-3,0
+230032,Overflowing K'aresh Trust Trove,0,0,,15,4,10,0
+232076,Adventurer's Warbound Battlegear Drop,0,0,,0,8,10,0
+232372,Crate of Bygone Riches,0,0,,15,4,10,0
+232463,Overflowing Undermine Trove,0,0,,15,4,10,0
+232465,Darkfuse Trove,0,0,,15,4,10,0
+232471,Cache of Dark Iron Treasures,0,0,,15,4,10,0
+232472,Cache of Dark Iron Treasures,0,0,,15,4,10,0
+232473,Cache of Dark Iron Treasures,0,0,,15,4,10,0
+232598,Bag of Timewarped Badges,0,0,,15,4,-3,0
+232602,Forged Gladiator's Coin Pouch,0,0,,15,4,10,0
+232615,Prized Gladiator's Coin Pouch,0,0,,15,4,10,0
+232616,Astral Gladiator's Coin Pouch,0,0,,15,4,10,0
+232631,Wrapped Spear,0,0,,15,4,-3,0
+232877,Timely Goodie Bag,0,0,,15,4,-3,0
+233014,Bronze Celebration Cache of Treasures,0,0,,0,8,10,0
+233276,Delver's Starter Kit,0,0,,0,8,10,0
+233281,Delver's Cosmetic Surprise Bag,0,0,,0,8,10,0
+233557,Sifted Pile of Scrap,0,0,,15,4,10,0
+233558,S.C.R.A.P. Scrubber Deluxe,0,0,,15,4,10,0
+234413,Satchel of Exotic Mysteries,0,0,,15,0,0,0
+234425,Forgotten Folio,0,0,,15,4,10,0
+234450,Pirate's Booty,0,0,,15,4,10,0
+234729,Cache of Undermine Treasures,0,0,,15,4,10,0
+234731,Cache of Undermine Treasures,0,0,,15,4,10,0
+234743,Steamwheedle's Trove,0,0,,15,4,10,0
+234744,Blackwater's Trove,0,0,,15,4,10,0
+234745,Bilgewater's Trove,0,0,,15,4,10,0
+234746,Venture Co.'s Trove,0,0,,15,4,10,0
+234816,Overflowing Bag of Iron,0,0,,15,4,10,0
+235052,Weathered Mysterious Satchel,0,0,,15,4,-3,0
+235054,Pristine Mysterious Satchel,0,0,,15,4,-3,0
+235151,Distinguished Actor's Chest,0,0,,15,4,9,0
+235258,Bilgewater's Trove,0,0,,15,4,10,0
+235259,Bilgewater's Trove,0,0,,15,4,10,0
+235260,Blackwater's Trove,0,0,,15,4,10,0
+235261,Blackwater's Trove,0,0,,15,4,10,0
+235262,Steamwheedle's Trove,0,0,,15,4,10,0
+235263,Steamwheedle's Trove,0,0,,15,4,10,0
+235264,Venture Co.'s Trove,0,0,,15,4,10,0
+235265,Venture Co.'s Trove,0,0,,15,4,10,0
+235505,Satchel of Timewarped Badges,0,0,,15,4,-3,0
+235506,Box of Timewarped Badges,0,0,,15,4,-3,0
+235548,Earthen Landlubber's Cache,0,0,,0,8,10,0
+235558,Box of Darkfuse Miscellany,0,0,,15,4,10,0
+235610,Seasoned Adventurer's Cache,0,0,,0,8,10,0
+235639,Seasoned Adventurer's Cache,0,0,,0,8,10,0
+235911,Weathered Mysterious Satchel,0,0,,15,4,-3,0
+236632,Pouch of Voidbane Gems,0,0,,15,0,10,0
+236756,Socially Expected Tip Chest,0,0,,15,4,10,0
+236757,Generous Tip Chest,0,0,,15,4,10,0
+236758,Extravagant Tip Chest,0,0,,15,4,10,0
+236877,Crystallized Essence of Kaja'mite,0,0,,15,0,10,0
+236944,Weathered Mysterious Satchel,0,0,,15,4,-3,0
+237132,Bilgewater Trove,0,0,,15,4,10,0
+237133,Venture Co. Trove,0,0,,15,4,10,0
+237134,Steamwheedle Trove,0,0,,15,4,10,0
+237135,Blackwater Trove,0,0,,15,4,10,0
+237743,Arathi Soldier's Coffer,0,0,,15,4,10,0
+237759,Arathi Cleric's Chest,0,0,,15,4,10,0
+237760,Arathi Champion's Spoils,0,0,,15,4,10,0
+237812,Cache of Infinite Treasure,0,0,,15,4,6,0
+238207,Nanny's Surge Dividends,0,0,,0,8,10,0
+238208,Nanny's Surge Dividends,0,0,,0,8,10,0
+238531,Radiant Stomach,0,0,,0,8,11,0
+239004,Radiant Service Satchel,0,0,,15,4,10,0
+239077,Mound of Mildly-Meaningful Meat,0,0,,0,8,11,0
+239118,Pinnacle Cache,0,0,,0,8,10,0
+239120,Seasoned Adventurer's Cache,0,0,,0,8,10,0
+239121,Awakened Mechanical Cache,0,0,,0,0,10,0
+239122,The General's War Chest,0,0,,0,0,10,0
+239124,The Vizier's Capital,0,0,,0,0,10,0
+239125,The Weaver's Gratuity,0,0,,0,0,10,0
+239126,Radiant Cache,0,0,,0,0,10,0
+239128,Theater Troupe's Trove,0,0,,0,0,10,0
+239224,Cache of Infinite Treasure,0,0,,15,4,6,0
+239303,Cache of Infinite Treasure,0,0,,15,4,6,0
+239440,Dastardly Prize Purse,0,0,,0,8,10,0
+239489,Radiant Officer's Cache,0,0,,15,4,10,0
+239546,Confiscated Cultist's Bag,0,0,,15,4,10,0
+240175,Crystallized Ethereal Voidsplinter,0,0,,15,0,10,0
+241131,Amani Lapis Prism,0,0,,7,11,11,0
+241132,Amani Lapis Prism,0,0,,7,11,11,0
+241133,Tenebrous Amethyst Prism,0,0,,7,11,11,0
+241134,Tenebrous Amethyst Prism,0,0,,7,11,11,0
+241135,Sanguine Garnet Prism,0,0,,7,11,11,0
+241136,Sanguine Garnet Prism,0,0,,7,11,11,0
+241137,Harandar Peridot Prism,0,0,,7,11,11,0
+241138,Harandar Peridot Prism,0,0,,7,11,11,0
+242386,Lorewalker's Crate of Memorabilia,0,0,,15,4,10,0
+242650,Box of Rocks,0,0,,15,4,11,0
+243235,Adventurer's Footlocker,0,0,,0,8,7,0
+243291,Bag of Brewfest Merchandise,0,0,,15,4,-3,0
+243292,Bag of Brewfest Merchandise,0,0,,15,4,-3,0
+243293,Bag of Brewfest Merchandise,0,0,,15,4,-3,0
+243373,Timerunner's Weaponry,0,0,,15,4,6,0
+244336,K'aresh Box of Resonance Crystals,0,0,,0,8,10,0
+244457,Keystone Container,0,0,,15,4,8,0
+244466,Dagran's Pouch of Shards,0,0,,15,4,10,0
+244696,Overcharged Chest,0,0,,0,8,10,0
+244842,Fabled Veteran's Cache,0,0,,0,8,10,0
+244865,Pinnacle Cache,0,0,,0,8,10,0
+244883,Seasoned Undermine Adventurer's Cache,0,0,,0,8,10,0
+244906,Gently Shaken Gift,0,0,,15,0,-3,0
+244908,Winter Veil Gift,0,0,,15,0,-3,0
+245280,Seasoned Khaz Algar Adventurer's Cache,0,0,,0,8,10,0
+245553,Heroic Cache of Infinite Treasure,0,0,,15,4,6,0
+245589,Hellcaller Chest,0,0,,0,8,10,0
+245611,Wriggling Pinnacle Cache,0,0,,0,8,10,0
+245644,Box of Rocks,0,0,,15,4,11,0
+245647,School of Gems,0,0,,15,4,11,0
+245648,School of Gems,0,0,,15,4,11,0
+245650,Bouquet of Herbs,0,0,,15,4,11,0
+245651,Bouquet of Herbs,0,0,,15,4,11,0
+246585,Artisan's Consortium Payout,0,0,,15,4,11,0
+246697,Self-Assembling Homeware Kit,0,0,,0,8,-3,0
+246812,Minor Bronze Cache,0,0,,15,4,6,0
+246813,Greater Bronze Cache,0,0,,15,4,6,0
+246814,Bronze Cache,0,0,,15,4,6,0
+246815,Lesser Bronze Cache,0,0,,15,4,6,0
+247820,Cache of K'areshi Treasures,0,0,,15,4,10,0
+247821,Cache of K'areshi Treasures,0,0,,15,4,10,0
+248126,Delver's Starter Kit,0,0,,0,8,10,0
+248127,Delver's Cosmetic Surprise Bag,0,0,,0,8,10,0
+248247,Cache of Infinite Power,0,0,,15,4,6,0
+250116,Cache of Quel'Thalas Treasures,0,0,,15,4,11,0
+250117,Cache of Quel'Thalas Treasures,0,0,,15,4,11,0
+250750,Pouch of Sprouted Clippings,0,0,,15,4,11,0
+250753,Bag of Cracked Orebits,0,0,,15,4,11,0
+250754,Bag of Wild Skinnings,0,0,,15,4,11,0
+250755,Pouch of Mystic Grindings,0,0,,15,4,11,0
+250763,Theater Troupe's Trove,0,0,,0,0,10,0
+250764,Nanny's Surge Dividends,0,0,,0,8,10,0
+250765,Awakened Mechanical Cache,0,0,,0,0,10,0
+250766,Radiant Cache,0,0,,0,0,10,0
+250767,The General's War Chest,0,0,,0,0,10,0
+250768,The Vizier's Capital,0,0,,0,0,10,0
+250769,The Weaver's Gratuity,0,0,,0,0,10,0
+250975,Hellcaller Chest,0,0,,0,8,10,0
+251286,Bundle of Petrified Roots,0,0,,15,4,10,0
+251287,Generous Bundle of Petrified Roots,0,0,,15,4,11,0
+251321,Collection of Eversong Minerals,0,0,,15,4,11,0
+251322,Thalassian Leatherworker's Duffel,0,0,,15,4,11,0
+251324,Basket of Eversong Herbs,0,0,,15,4,11,0
+251326,Thalassian Enchanter's Purse,0,0,,15,4,11,0
+251327,Thalassian Tailor's Tote Bag,0,0,,15,4,11,0
+251821,Cache of Infinite Power,0,0,,15,4,6,0
+251970,Overflowing Amani Trove,0,0,,15,4,11,0
+253357,Felscorned Arsenal,0,0,,0,8,6,0
+254323,Worldsoul Satchel,0,0,,15,4,10,0
+254324,Worldsoul Satchel,0,0,,15,4,10,0
+254325,Worldsoul Satchel,0,0,,15,4,10,0
+254677,Apex Cache,0,0,,0,8,11,0
+254847,Minor Bronze Cache,0,0,,15,4,6,0
+254848,Minor Bronze Cache,0,0,,15,4,6,0
+254849,Minor Bronze Cache,0,0,,15,4,6,0
+254850,Minor Bronze Cache,0,0,,15,4,6,0
+255428,Tolbani's Medicine Satchel,0,0,,15,4,11,0
+255666,Huge Bag of Midnight General Goods,0,0,,0,8,11,0
+255676,Phase Diver's Cache,0,0,,0,8,10,0
+255678,Huge Bag of Midnight Herbs,0,0,,0,8,11,0
+255679,Huge Bag of Midnight Minerals,0,0,,0,8,11,0
+255682,Huge Bag of Midnight Skins,0,0,,0,8,11,0
+255683,Huge Bag of Midnight Jewelcrafting Goods,0,0,,0,8,11,0
+255684,Huge Bag of Midnight Leatherworking Goods,0,0,,0,8,11,0
+255686,Huge Bag of Midnight Alchemy Goods,0,0,,0,8,11,0
+255687,Huge Bag of Midnight Optional Goods,0,0,,0,8,11,0
+255689,Huge Bag of Midnight Engineering Goods,0,0,,0,8,11,0
+255690,Huge Bag of Midnight Enchanting Goods,0,0,,0,8,11,0
+255691,Huge Bag of Midnight Tailoring Goods,0,0,,0,8,11,0
+255703,Huge Bag of Midnight Blacksmithing Goods,0,0,,0,8,11,0
+255704,Huge Bag of Midnight Inscription Goods,0,0,,0,8,11,0
+256055,Overflowing Hara'ti Trove,0,0,,15,4,11,0
+256763,Cache from the Infinite's Armory,0,0,,15,4,6,0
+257023,Preyseeker's Adventurer Chest,0,0,,0,8,11,0
+257026,Preyseeker's Veteran Chest,0,0,,0,8,11,0
+257603,Primalist Weapon,0,0,,4,0,9,0
+258534,Illustrious Contender's Strongbox,0,0,,0,8,11,0
+258620,Field Medic's Hazard Payout,0,0,,0,8,11,0
+258839,Concealed Catalogue,0,0,,15,4,11,0
+259086,Void-Touched Satchel of Cooperation,0,0,,15,4,11,0
+259334,Overflowing Singularity Trove,0,0,,15,4,11,0
+260173,Crystallized Dawnlight Manaflux,0,0,,15,0,10,0
+260193,Fabled Veteran's Cache,0,0,,0,8,11,0
+260534,Master Alchemist's Surplus Reagents,0,0,,0,8,11,0
+260536,Master Smith's Surplus Reagents,0,0,,0,8,11,0
+260537,Master Enchanter's Surplus Reagents,0,0,,0,8,11,0
+260538,Master Engineer's Surplus Reagents,0,0,,0,8,11,0
+260539,Master Herbalist's Surplus Reagents,0,0,,0,8,11,0
+260540,Master Scribe's Surplus Reagents,0,0,,0,8,11,0
+260541,Master Jewelcrafter's Surplus Reagents,0,0,,0,8,11,0
+260542,Master Leatherworker's Surplus Reagents,0,0,,0,8,11,0
+260543,Master Miner's Surplus Reagents,0,0,,0,8,11,0
+260544,Master Skinner's Surplus Reagents,0,0,,0,8,11,0
+260545,Master Tailor's Surplus Reagents,0,0,,0,8,11,0
+260940,Victorious Stormarion Pinnacle Cache,0,0,,0,8,11,0
+260979,Victorious Stormarion Cache,0,0,,0,8,11,0
+262346,Preyseeker's Champion Chest,0,0,,0,8,11,0
+262432,Weathered Lockbox,0,0,,15,4,6,0
+262635,Cache of Delver's Spoils,0,0,,15,4,11,0
+262658,Nebulous Voidcache: Midnight Falls,0,0,,15,4,11,0
+262662,Thalassian Distinguishment,0,0,,0,8,11,0
+262928,Preyseeker's Adventurer Sack,0,0,,0,8,11,0
+262936,Preyseeker's Veteran Sack,0,0,,0,8,11,0
+262938,Preyseeker's Champion Sack,0,0,,0,8,11,0
+263178,Delver's Starter Kit,0,0,,0,8,11,0
+263179,Delver's Cosmetic Surprise Bag,0,0,,0,8,11,0
+263400,Cache of Delver's Spoils,0,0,,15,4,11,0
+263433,Overflowing Silvermoon Trove,0,0,,15,4,11,0
+263465,Surplus Bag of Party Favors,0,0,,0,8,11,0
+263466,Overflowing Abundant Satchel,0,0,,0,8,11,0
+263467,Avid Learner's Supply Pack,0,0,,0,8,11,0
+263710,Primalist Plate Helm,0,0,,4,4,9,0
+263711,Primalist Cloth Helm,0,0,,4,1,9,0
+263712,Primalist Mail Helm,0,0,,4,3,9,0
+263713,Primalist Leather Helm,0,0,,4,2,9,0
+263714,Primalist Trinket,0,0,,4,0,9,0
+263715,Primalist Plate Chestpiece,0,0,,4,4,9,0
+263716,Primalist Cloth Chestpiece,0,0,,4,1,9,0
+263717,Primalist Mail Chestpiece,0,0,,4,3,9,0
+263718,Primalist Leather Chestpiece,0,0,,4,2,9,0
+263719,Primalist Leather Leggings,0,0,,4,2,9,0
+263720,Primalist Mail Leggings,0,0,,4,3,9,0
+263721,Primalist Cloth Leggings,0,0,,4,1,9,0
+263722,Primalist Plate Leggings,0,0,,4,4,9,0
+263724,Primalist Plate Spaulders,0,0,,4,4,9,0
+263725,Primalist Cloth Spaulders,0,0,,4,1,9,0
+263726,Primalist Mail Spaulders,0,0,,4,3,9,0
+263727,Primalist Leather Spaulders,0,0,,4,2,9,0
+263728,Primalist Leather Bracers,0,0,,4,2,9,0
+263729,Primalist Mail Bracers,0,0,,4,3,9,0
+263730,Primalist Cloth Bracers,0,0,,4,1,9,0
+263731,Primalist Plate Bracers,0,0,,4,4,9,0
+263732,Primalist Plate Belt,0,0,,4,4,9,0
+263733,Primalist Cloth Belt,0,0,,4,1,9,0
+263740,Primalist Mail Belt,0,0,,4,3,9,0
+263776,Primalist Leather Belt,0,0,,4,2,9,0
+263822,Primalist Leather Boots,0,0,,4,2,9,0
+263859,Primalist Mail Boots,0,0,,4,3,9,0
+263861,Primalist Plate Boots,0,0,,4,4,9,0
+263862,Primalist Cloth Boots,0,0,,4,1,9,0
+263863,Primalist Cloth Gloves,0,0,,4,1,9,0
+263864,Primalist Plate Gloves,0,0,,4,4,9,0
+263865,Primalist Mail Gloves,0,0,,4,3,9,0
+263866,Primalist Leather Gloves,0,0,,4,2,9,0
+263867,Primalist Cloak,0,0,,4,0,9,0
+263868,Primalist Ring,0,0,,4,0,9,0
+263869,Primalist Necklace,0,0,,4,0,9,0
+263928,Cache of Void-Touched Armaments,0,0,,15,4,11,0
+263929,Cache of Void-Touched Armaments,0,0,,15,4,11,0
+263934,Chest of Gold,0,0,,15,4,11,0
+264274,Fabled Adventurer's Cache,0,0,,0,8,11,0
+264314,Cache of Void-Touched Headgear,0,0,,15,4,11,0
+264315,Cache of Void-Touched Shoulderwear,0,0,,15,4,11,0
+264316,Cache of Void-Touched Cloaks,0,0,,15,4,11,0
+264317,Cache of Void-Touched Chestpieces,0,0,,15,4,11,0
+264318,Cache of Void-Touched Bracers,0,0,,15,4,11,0
+264319,Cache of Void-Touched Gloves,0,0,,15,4,11,0
+264320,Cache of Void-Touched Belts,0,0,,15,4,11,0
+264321,Cache of Void-Touched Legwear,0,0,,15,4,11,0
+264322,Cache of Void-Touched Boots,0,0,,15,4,11,0
+264323,Cache of Void-Touched Weapons,0,0,,15,4,11,0
+264470,Ash-Tied Offering,0,0,,15,4,11,0
+264475,Umbral Tin Lockbox,1,4311,?,15,0,11,0
+264587,Ani's Trinket Bag,0,0,,15,4,11,0
+264675,Cache from the Infinite's Armory,0,0,,15,4,6,0
+264914,Ranger's Cache,0,0,,0,8,11,0
+264972,Voidstorm Victuals,0,0,,0,8,11,0
+264988,Endgame Essentials,0,0,,0,8,11,0
+265995,Quel'Thalas Adventurer's Cache,0,0,,0,8,11,0
+267299,Slayer's Duellum Trove,0,0,,15,4,11,0
+267488,Nebulous Voidcache: Crown of the Cosmos,0,0,,15,4,11,0
+268458,"Nebulous Voidcache: Belo'ren, Child of Al'ar",0,0,,15,4,11,0
+268459,Nebulous Voidcache: Imperator Averzian,0,0,,15,4,11,0
+268460,Nebulous Voidcache: Vorasius,0,0,,15,4,11,0
+268461,Nebulous Voidcache: Fallen-King Salhadaar,0,0,,15,4,11,0
+268462,Nebulous Voidcache: Vaelgor & Ezzorak,0,0,,15,4,11,0
+268463,Nebulous Voidcache: Lightblinded Vanguard,0,0,,15,4,11,0
+268464,Nebulous Voidcache: Chimaerus the Undreamt God,0,0,,15,4,11,0
+268465,Nebulous Voidcache: Algeth'ar Academy,0,0,,15,4,11,0
+268466,Nebulous Voidcache: Magisters' Terrace,0,0,,15,4,11,0
+268467,Nebulous Voidcache: Nexus-Point Xenas,0,0,,15,4,11,0
+268468,Nebulous Voidcache: Pit of Saron,0,0,,15,4,11,0
+268469,Nebulous Voidcache: Seat of the Triumvirate,0,0,,15,4,11,0
+268470,Nebulous Voidcache: Skyreach,0,0,,15,4,11,0
+268471,Nebulous Voidcache: Windrunner Spire,0,0,,15,4,11,0
+268473,Nebulous Voidcache: Maisara Caverns,0,0,,15,4,11,0
+268485,Victorious Stormarion Pinnacle Cache,0,0,,0,8,11,0
+268487,Avid Learner's Supply Pack,0,0,,0,8,11,0
+268488,Overflowing Abundant Satchel,0,0,,0,8,11,0
+268489,Surplus Bag of Party Favors,0,0,,0,8,11,0
+268490,Apex Cache,0,0,,0,8,11,0
+268545,Aspiring Preyseeker's Chest,0,0,,0,8,11,0
+268969,Nebulous Voidcache: Delver's Trove,0,0,,15,4,11,0
+269005,Preyseeker's Glinting Coin Pouch,0,0,,0,8,11,0
+269006,Preyseeker's Gleaming Coin Pouch,0,0,,0,8,11,0
+269007,Preyseeker's Glittering Coin Pouch,0,0,,0,8,11,0
+269029,Bag of Totally Legitimate Amani Goods,0,0,,12,0,11,0
+269234,Overflowing Ritual Site Cache,0,0,,15,4,11,0
+269258,Void-Twisted Sporbit,0,0,,15,0,11,0
+269701,Surplus Bag of Party Favors,0,0,,0,8,11,0
+269702,Overflowing Abundant Satchel,0,0,,0,8,11,0
+269703,Avid Learner's Supply Pack,0,0,,0,8,11,0
+269704,Victorious Stormarion Cache,0,0,,0,8,11,0
+269768,Nebulous Voidcache: Prey,0,0,,15,4,11,0
+270244,Field Pouch,0,0,,0,8,11,0
+270247,Field Satchel,0,0,,0,8,11,0
+270431,Haranir Footlocker,0,0,,0,8,11,0
+270932,Wriggling Field Pouch,0,0,,0,8,11,0
+270933,Bulging Field Pouch,0,0,,0,8,11,0
+270934,Recruit's Field Pouch,0,0,,0,8,11,0
+270987,Recruit's Field Satchel,0,0,,0,8,11,0
+271221,Wriggling Recruit's Field Pouch,0,0,,0,8,11,0
+271222,Bulging Recruit's Field Pouch,0,0,,0,8,11,0
+272125,Recruit's Cache,0,0,,0,8,11,0
+273152,Delve Gearbox,0,0,,15,4,11,0
+273153,Delve Gearbox,0,0,,15,4,11,0
+273154,Delve Gearbox,0,0,,15,4,11,0
+273155,Delve Gearbox,0,0,,15,4,11,0
+273156,Delve Gearbox,0,0,,15,4,11,0
+274372,Big ol' Bag of Polished Pet Charms,0,0,,15,4,11,0
+274421,Crate of Community Coupons,0,0,,15,4,11,0
+274465,Aggitated Crate of Zandalari Fury,0,0,,15,4,11,0
+274578,Offering of Unalloyed Abundance,0,0,,0,8,11,0
+274707,Crystallized Venomblight Manaflux,0,0,,15,0,10,0
+274708,Nebulous Voidcache: Nymrissa Wavecaller,0,0,,15,4,11,0
+274713,Cache of Amani Treasures,0,0,,15,4,11,0
+274714,Cache of Amani Treasures,0,0,,15,4,11,0
+275228,Nebulous Voidcache: Rotmire,0,0,,15,4,11,0
+275690,Riftstalker's Cache,0,0,,0,8,11,0
+275691,Riftstalker's Overflowing Cache,0,0,,0,8,11,0
+275726,Preyhunter's Champion Chest,0,0,,0,8,11,0
+275728,Preyhunter's Champion Sack,0,0,,0,8,11,0
+275822,Preyhunter's Veteran Chest,0,0,,0,8,11,0
+275899,Venom-Soaked Satchel,0,0,,0,8,11,0
+275911,Venom-Covered Chest,0,0,,0,8,11,0
+275917,Preyhunter's Veteran Sack,0,0,,0,8,11,0
+275918,Preyhunter's Adventurer Chest,0,0,,0,8,11,0
+275919,Preyhunter's Adventurer Sack,0,0,,0,8,11,0
+275978,Delver's Starter Kit,0,0,,0,8,11,0
+275986,Delver's Cosmetic Surprise Bag,0,0,,0,8,11,0
+276104,Aspiring Preyhunter's Chest,0,0,,0,8,11,0
+276378,Cache of Void-Touched Armaments: Boots,0,0,,15,4,11,0
+276379,Cache of Void-Touched Armaments: Legs,0,0,,15,4,11,0
+276380,Cache of Void-Touched Armaments: Belts,0,0,,15,4,11,0
+276381,Cache of Void-Touched Armaments: Gloves,0,0,,15,4,11,0
+276382,Cache of Void-Touched Armaments: Bracers,0,0,,15,4,11,0
+276383,Cache of Void-Touched Armaments: Chest,0,0,,15,4,11,0
+276384,Cache of Void-Touched Armaments: Cloak,0,0,,15,4,11,0
+276385,Cache of Void-Touched Armaments: Shoulder,0,0,,15,4,11,0
+276386,Cache of Void-Touched Armaments: Head,0,0,,15,4,11,0
+276387,Riftstalker's Favor,0,0,,0,8,11,0
+276388,Riftstalker's Overflowing Favor,0,0,,0,8,11,0
+276389,Riftstalker's Prize,0,0,,0,8,11,0
+276390,Riftstalker's Overflowing Prize,0,0,,0,8,11,0
+276536,Corrosive Reticule,0,0,,0,8,11,0
+276624,Overflowing Hash'ura Trove,0,0,,15,4,11,0
+277124,Warbound Cache of Void-Touched Armaments,0,0,,15,4,11,0
+277125,Cache of Void-Touched Armaments: Weapons,0,0,,15,4,11,0
+277126,Cache of Void-Touched Armaments: Necklaces,0,0,,15,4,11,0
+277127,Cache of Void-Touched Armaments: Rings,0,0,,15,4,11,0
+277137,Wriggling Venom-Soaked Satchel,0,0,,0,8,11,0
+277157,Barnacle-Encrusted Chest,0,0,,15,4,11,0
+277937,Balanced Offering,0,0,,0,8,11,0
+277938,Virulent Offering,0,0,,0,8,11,0
+277939,Volatile Offering,0,0,,0,8,11,0
+277940,Fragile Offering,0,0,,0,8,11,0
+277941,Eerie Offering,0,0,,0,8,11,0
+277942,Odious Offering,0,0,,0,8,11,0
+277943,Pestilent Offering,0,0,,0,8,11,0
+277944,Phlegmatic Offering,0,0,,0,8,11,0
+277945,Melancholic Offering,0,0,,0,8,11,0
+277946,Choleric Offering,0,0,,0,8,11,0
+277975,Arcanostorage Sphere,0,0,,0,8,-3,0
+278004,Warbound Cache of Void-Touched Armaments: Boots,0,0,,15,4,11,0
+278005,Warbound Cache of Void-Touched Armaments: Legs,0,0,,15,4,11,0
+278006,Warbound Cache of Void-Touched Armaments: Belts,0,0,,15,4,11,0
+278007,Warbound Cache of Void-Touched Armaments: Gloves,0,0,,15,4,11,0
+278008,Warbound Cache of Void-Touched Armaments: Bracers,0,0,,15,4,11,0
+278009,Warbound Cache of Void-Touched Armaments: Chest,0,0,,15,4,11,0
+278010,Warbound Cache of Void-Touched Armaments: Cloak,0,0,,15,4,11,0
+278011,Warbound Cache of Void-Touched Armaments: Shoulder,0,0,,15,4,11,0
+278012,Warbound Cache of Void-Touched Armaments: Head,0,0,,15,4,11,0
+278013,Warbound Cache of Void-Touched Armaments: Weapons,0,0,,15,4,11,0
+278014,Warbound Cache of Void-Touched Armaments: Necklaces,0,0,,15,4,11,0
+278015,Warbound Cache of Void-Touched Armaments: Rings,0,0,,15,4,11,0
+278021,Bulging Elven Field Pouch,0,0,,0,8,11,0
+278022,Bulging Amani Field Pouch,0,0,,0,8,11,0
+278024,Bulging Naga Field Pouch,0,0,,0,8,11,0
+278025,Bulging Twilight Field Pouch,0,0,,0,8,11,0
+278026,Bulging Ethereal Pack,0,0,,0,8,11,0
+278027,Bulging Winter Pack,0,0,,0,8,11,0
+278035,Ornate Healing Potion,0,0,,0,1,11,0
+278084,Handful of Esoteric Ingredients,0,0,,0,8,11,0
+278283,Nebulous Voidcache: Entombed Sentinels,0,0,,15,4,11,0
+278284,Nebulous Voidcache: Ula'tek,0,0,,15,4,11,0
+278285,Nebulous Voidcache: Soulcoiler Nek'zali,0,0,,15,4,11,0
+278286,Nebulous Voidcache: Tortollan Explorers,0,0,,15,4,11,0
+278287,Nebulous Voidcache: Vashnik,0,0,,15,4,11,0
+278288,Nebulous Voidcache: Sszorak,0,0,,15,4,11,0
+278289,Nebulous Voidcache: The Twin Fangs,0,0,,15,4,11,0
+278290,Nebulous Voidcache: The Bargained Crown,0,0,,15,4,11,0
+278329,Thalassian Recipe in a Bottle,0,0,,15,4,11,0
+279092,Anguish-Touched Pouch,0,0,,0,8,11,0
+279284,Nebulous Voidcache: Delver's Trove,0,0,,15,4,11,0
+279287,Corroded Pouch,0,0,,0,8,11,0
+279288,Corroded Satchel,0,0,,0,8,11,0
+279345,Corroded Satchel,0,0,,0,8,11,0
+279520,Fabled Veteran's Cache,0,0,,0,8,11,0
+279522,Surplus Bag of Party Favors,0,0,,0,8,11,0
+279523,Overflowing Abundant Satchel,0,0,,0,8,11,0
+279525,Avid Learner's Supply Pack,0,0,,0,8,11,0
+279526,Victorious Stormarion Pinnacle Cache,0,0,,0,8,11,0
+279527,Apex Cache,0,0,,0,8,11,0
+279574,Preyhunter's Hero Chest,0,0,,0,8,11,0
+279618,Nebulous Voidcache: Altar of Fangs,0,0,,15,4,11,0
+279619,Nebulous Voidcache: The Blinding Vale,0,0,,15,4,11,0
+279620,Nebulous Voidcache: Den of Nalorakk,0,0,,15,4,11,0
+279621,Nebulous Voidcache: Kings' Rest,0,0,,15,4,11,0
+279622,Nebulous Voidcache: Ruby Life Pools,0,0,,15,4,11,0
+279623,Nebulous Voidcache: Murder Row,0,0,,15,4,11,0
+279624,Nebulous Voidcache:Temple of Sethraliss,0,0,,15,4,11,0
+279625,Nebulous Voidcache: Voidscar Arena,0,0,,15,4,11,0
+280131,Nebulous Voidcache: Prey,0,0,,15,4,11,0
+280136,Gift of the Soulmates,0,0,,15,4,11,0

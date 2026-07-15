@@ -86,7 +86,6 @@ JustQuest.Constants.TIMING = {
     QUEST_PROCESSING_TIMEOUT = 1.5,
     AUTO_RECOVERY_TIMEOUT = 1.5,
     REINTERACT_QUEST_WINDOW = 0.5,
-    GOSSIP_REPEAT_WINDOW = 1.50,
     
     -- Container housekeeping (not scaled)
     CONTAINER_THROTTLE = 0.5,
@@ -123,6 +122,7 @@ JustQuest.Constants.DEFAULTS = {
         skipCinematics = false,
         debugMode = false,
         fastMode = false,
+        automationSummary = false,  -- print a concise chat summary at the end of each automation chain
         
         quest = {
             enabled = true,
@@ -174,9 +174,31 @@ JustQuest.Constants.DEFAULTS = {
         containers = {
             enabled = true,
             throttleDelay = 0.5,
-            useDatabaseFallback = false,
+            -- What counts as auto-openable:
+            --   "list" = your whitelist only
+            --   "safe" = whitelist + free-open containers (clams/chests/coin sacks) [default]
+            --   "all"  = also lockboxes (opened once unlocked; rogues can auto-pick)
+            mode = "safe",
+            rogueAutoPick = false,  -- rogues: cast Pick Lock on lockboxes ("all" mode)
             whitelist = {},
             blacklist = {},
+        },
+
+        gearSwap = {
+            advisorEnabled = false,  -- Pawn-powered upgrade advisor (recommend best gear you own)
+            autoEquip = false,       -- advisor: auto-equip upgrades as you loot (else advise only)
+            minUpgradePct = 5,       -- advisor: ignore upgrades smaller than this percent
+            weightItemLevel = false, -- expose Item Level as a weightable Pawn stat (opt-in, global)
+            announce = true,         -- on-screen toast + sound when gear is equipped/recommended
+            ignoreItems = {},        -- persistent "never recommend" list (itemID -> name)
+        },
+
+        delve = {
+            autoAcceptPower = false, -- auto-take a delve power (else the choice is yours)
+            hidePowerFrame = true,   -- hide the power popup while auto-taking it
+            autoTier = false,        -- auto-pick a tier when the delve picker opens
+            preferredTier = 1,       -- which tier (1-11) autoTier selects
+            autoEnter = false,       -- enter the delve after autoTier picks (autoTier only)
         },
 
         lfgQuickExit = {
@@ -230,6 +252,11 @@ JustQuest.Constants.INTERFERING_FRAMES = {
     "PVPMatchScoreboard",
     "CommunitiesFrame",
     "WarboardQuestChoiceFrame",
+    -- The delve difficulty picker is a gossip frame whose options ARE the tiers, and
+    -- selecting one enters the delve. Traversing it the way we traverse a dialog menu
+    -- would drop the player into a delve at whatever tier came first. Hands off: only
+    -- DelveEngine touches it, and only when the player opts in.
+    "DelvesDifficultyPickerFrame",
 }
 
 -- ============================================================
@@ -278,7 +305,23 @@ JustQuest.Constants.BYPASS_SAFETY_EVENTS = {
 	[JustQuest.Constants.EVENTS.QUEST_ACCEPTED] = true,
 	[JustQuest.Constants.EVENTS.QUEST_TURNED_IN] = true,
 	[JustQuest.Constants.EVENTS.QUEST_LOG_UPDATE] = true,
+	-- Teardown / recovery — the standard gate requires an interaction frame to be
+	-- OPEN, which is exactly what these events report is no longer true (or has been
+	-- replaced by a vendor/trainer frame). Gating them drops the only cleanup pass:
+	-- per-conversation option and chain-depth state carries into the next NPC until
+	-- nothing is auto-selectable, and fast mode never restores alpha, leaving an
+	-- open-but-invisible frame that only walking out of range clears. Each handler is
+	-- cleanup and self-gates before touching an in-flight chain.
+	[JustQuest.Constants.EVENTS.GOSSIP_CLOSED] = true,
+	[JustQuest.Constants.EVENTS.GOSSIP_CONFIRM_CANCEL] = true,
+	[JustQuest.Constants.EVENTS.PLAYER_CHOICE_CLOSE] = true,
+	["PLAYER_ENTERING_WORLD"] = true,
 	-- Instant state management — must always fire
 	[JustQuest.Constants.EVENTS.MODIFIER_STATE_CHANGED] = true,
 	[JustQuest.Constants.EVENTS.PLAYER_TARGET_CHANGED] = true,
+	-- Control-state entry (vehicle / possess / override action bar): must fire even
+	-- while the vehicle UI is active so automation can stand down before it desyncs.
+	["UNIT_ENTERED_VEHICLE"] = true,
+	["UPDATE_OVERRIDE_ACTIONBAR"] = true,
+	["UPDATE_POSSESS_BAR"] = true,
 }

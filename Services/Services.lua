@@ -66,7 +66,8 @@ local AUTOMATION_TIMERS = {
     "content_repump", "gossip_show", "quest_greeting",
     "quest_processing_timeout", "deferred_onquestlog_update",
     "reward_data_retry", "reward_select_fallback",
-    "state_recovery_resume", "cancel_cinematic",
+    "state_recovery_resume",
+    "legacy_api_poll",
 }
 
 function Services.CancelAutomationTimers()
@@ -192,9 +193,11 @@ local HALT_REASONS = {
     ["quest_requires_uncached_items"] = "Quest requires an item that hasn't loaded yet",
     ["expensive_quest_requires_payment"] = "Quest turn-in costs gold",
     ["multiple_significant_rewards"]  = "Multiple significant rewards — manual selection required",
+    ["reward_items_not_loaded"]       = "Reward items haven't finished loading",
 }
 
 function Services.OutputHalt(reason, extraInfo)
+    reason = reason or "paused"  -- guard: reason is the throttle table key, never nil
     local now = GetTime()
     
     -- Throttle per reason
@@ -213,6 +216,54 @@ function Services.OutputHalt(reason, extraInfo)
 
     print("|cffff6b00JustQuest:|r " .. msg .. " - manual interaction required")
     return true  -- Message was shown
+end
+
+-- ============================================================
+-- Automation Summary (opt-in)
+-- ============================================================
+-- Counts what automation DID across one chain and prints a single concise line once the
+-- chain settles. Every recorded action reschedules the same debounce flush, so a
+-- multi-quest hub collapses into one summary instead of a line per step. NoteAutomation
+-- is a no-op unless the option is on, so there is zero cost when disabled.
+local SUMMARY_DEBOUNCE = 1.5
+local summary = { accepted = 0, turnedIn = 0, containers = 0 }
+local summaryPending = false
+
+function Services.FlushAutomationSummary()
+    if not summaryPending then return end
+
+    -- Still mid-chain (a step lagged past the debounce)? Wait and retry so the summary
+    -- prints only after the whole chain has actually settled.
+    local safety = JustQuest.Core.GetModule("SafetyEngine")
+    if safety and safety.IsBusy() then
+        Services.ScheduleOnce("automation_summary_flush", SUMMARY_DEBOUNCE, Services.FlushAutomationSummary)
+        return
+    end
+
+    local parts = {}
+    if summary.accepted > 0   then parts[#parts + 1] = "accepted " .. summary.accepted end
+    if summary.turnedIn > 0   then parts[#parts + 1] = "turned in " .. summary.turnedIn end
+    if summary.containers > 0 then
+        parts[#parts + 1] = "opened " .. summary.containers ..
+            (summary.containers == 1 and " container" or " containers")
+    end
+
+    summary.accepted, summary.turnedIn, summary.containers = 0, 0, 0
+    summaryPending = false
+
+    if #parts > 0 then
+        Services.Info(table.concat(parts, ", "))
+    end
+end
+
+-- Record one automated action. kind = "accepted" | "turnedIn" | "containers".
+function Services.NoteAutomation(kind, count)
+    local config = JustQuest.Core.GetModule("Config")
+    if not (config and config.Get(nil, "automationSummary")) then return end
+    if summary[kind] == nil then return end
+    summary[kind] = summary[kind] + (count or 1)
+    summaryPending = true
+    Services.ScheduleOnce("automation_summary_flush", SUMMARY_DEBOUNCE, Services.FlushAutomationSummary)
 end
 
 -- ============================================================
@@ -342,6 +393,10 @@ end
 function Services.RestoreAutomationFrames()
     if QuestFrame then QuestFrame:SetAlpha(1) end
     if GossipFrame then GossipFrame:SetAlpha(1) end
+    -- DelveEngine hides this while auto-taking a power. If that ever fails partway, the
+    -- frame would be left shown-but-invisible and the player couldn't answer it — so it
+    -- rides the same periodic recovery as the rest.
+    if PlayerChoiceFrame then PlayerChoiceFrame:SetAlpha(1) end
 end
 
 -- Check for non-quest/gossip NPC frames (vendor, trainer, flight map, etc.)
@@ -433,13 +488,14 @@ end
 
 -- Check for ACTIONABLE quests (complete to turn in, or available to accept).
 -- Aligned with QuestEngine visibility filters to prevent phantom routing.
-function Services.HasActionableQuestContent()
+function Services.HasActionableQuestContent(active, available)
     if not C_GossipInfo then
         return false, "no_api"
     end
 
-    -- Check for complete quests (can turn in)
-    local active = C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests()
+    -- Check for complete quests (can turn in). Callers may pass pre-fetched lists to
+    -- avoid re-querying; otherwise fetch here.
+    active = active or (C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests())
     if type(active) == "table" then
         for _, quest in ipairs(active) do
             if quest.isComplete and quest.questID and not Services.IsQuestBlocked(quest.questID) then
@@ -449,7 +505,7 @@ function Services.HasActionableQuestContent()
     end
 
     -- Check for available quests (can accept)
-    local available = C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests()
+    available = available or (C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests())
     if type(available) == "table" and #available > 0 then
         local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
         for _, quest in ipairs(available) do
@@ -484,11 +540,26 @@ function Services.IsAutomationEnabled()
            config.Get("gossip", "enabled")
 end
 
+-- True while the player is in a vehicle, possessing/controlling an NPC, or using
+-- an override/vehicle action bar (e.g. "torture the suspect" quest control states,
+-- where your bar is replaced with a few special abilities). Automation must fully
+-- stand down here: interacting with the controlling NPC or its gossip during the
+-- board/transition desyncs the client and the server force-disconnects.
+-- UnitHasVehicleUI alone misses possess and override-bar states.
+function Services.InSpecialControlState()
+    if UnitHasVehicleUI and UnitHasVehicleUI("player") then return true end
+    if UnitInVehicle and UnitInVehicle("player") then return true end
+    if HasOverrideActionBar and HasOverrideActionBar() then return true end
+    if HasVehicleActionBar and HasVehicleActionBar() then return true end
+    if IsPossessBarVisible and IsPossessBarVisible() then return true end
+    return false
+end
+
 -- Base validation gate — shared by all automation paths.
 -- Does NOT check interfering frames (NPC-interaction specific).
 function Services.CanAutomateBase()
     if UnitIsDeadOrGhost("player") then return false end
-    if UnitHasVehicleUI and UnitHasVehicleUI("player") then return false end
+    if Services.InSpecialControlState() then return false end
     if not Services.ShouldAutomate() then
         -- Modifier key held: restore frames so player can interact manually.
         -- Fast mode may have hidden them before the modifier was pressed.
@@ -528,6 +599,7 @@ Services.ValidateAutomationPreconditions = Services.CanAutomateContainers
 -- ============================================================
 
 function Services.PollForLegacyQuestData(maxAttempts, onSuccess, onTimeout)
+    maxAttempts = maxAttempts or 10  -- guard the pollAttempts >= maxAttempts compare below
     local pollAttempts = 0
     local pollInterval = Services.GetTiming("QUEST_ACCEPT_POLL_INTERVAL", 0.05)
     
@@ -556,7 +628,10 @@ function Services.PollForLegacyQuestData(maxAttempts, onSuccess, onTimeout)
             local growth = JustQuest.Constants.TIMING.RE_PUMP_GROWTH_FACTOR or 1.5
             local backoff = math.min(pollInterval * (growth ^ (pollAttempts - 1)), maxDelay)
             local jitter = (math.random() * 0.2 - 0.1) * backoff
-            Services.ScheduleOnce('legacy_api_poll_' .. pollAttempts, backoff + jitter, poll)
+            -- Stable key (not per-attempt) so CancelAutomationTimers() can stop a pending
+            -- poll at teardown; only one is ever outstanding since each poll schedules the
+            -- next after the current has fired.
+            Services.ScheduleOnce("legacy_api_poll", backoff + jitter, poll)
         end
     end
     
@@ -569,19 +644,18 @@ end
 
 -- Check for actionable content via ANY API (modern or legacy)
 function Services.HasAnyActionableContent()
-    local hasModern = Services.HasActionableQuestContent()
-    if hasModern then return true, "modern" end
+    -- Fetch the modern quest lists once and share them with the filtered check.
+    local rawActive = C_GossipInfo and C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests()
+    local rawAvailable = C_GossipInfo and C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests()
+
+    if Services.HasActionableQuestContent(rawActive, rawAvailable) then return true, "modern" end
 
     -- Unfiltered quest check — HasActionableQuestContent may filter all quests out
     -- (recently accepted, log full, etc.) or data may still be loading.
     -- Route through QuestEngine anyway for correct priority (quests before gossip).
-    if C_GossipInfo then
-        local rawActive = C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests()
-        local rawAvailable = C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests()
-        if (type(rawActive) == "table" and #rawActive > 0) or
-           (type(rawAvailable) == "table" and #rawAvailable > 0) then
-            return true, "modern"
-        end
+    if (type(rawActive) == "table" and #rawActive > 0) or
+       (type(rawAvailable) == "table" and #rawAvailable > 0) then
+        return true, "modern"
     end
 
     -- Legacy API (QUEST_GREETING frame)
@@ -596,8 +670,8 @@ function Services.HasAnyActionableContent()
         return true, "greeting_visible"
     end
 
-    local hasGossip = C_GossipInfo and C_GossipInfo.GetOptions and #(C_GossipInfo.GetOptions() or {}) > 0
-    if hasGossip then return true, "gossip" end
+    local opts = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
+    if type(opts) == "table" and #opts > 0 then return true, "gossip" end
 
     return false, "none"
 end

@@ -92,10 +92,30 @@ function Config.Set(module, key, value)
         end
     end
     
-    if module == "containers" and (key == "whitelist" or key == "blacklist" or key == "enabled" or key == "useDatabaseFallback") then
+    if module == "containers" and (key == "whitelist" or key == "blacklist" or key == "enabled" or key == "mode" or key == "rogueAutoPick") then
         local containerEngine = JustQuest.Core.GetModule("ContainerEngine")
         if containerEngine and containerEngine.RefreshConfigCache then
             containerEngine.RefreshConfigCache()
+        end
+    end
+
+    if module == "gearSwap" and (key == "advisorEnabled" or key == "minUpgradePct") and value then
+        local advisor = JustQuest.Core.GetModule("GearAdvisor")
+        if advisor and advisor.RescanNow then
+            advisor.RescanNow()
+        end
+    end
+
+    if module == "gearSwap" and key == "weightItemLevel" then
+        local inj = JustQuest.Core.GetModule("PawnStatInjection")
+        if inj and inj.Refresh then
+            inj.Refresh()
+        end
+        -- Every score just changed even though the bags didn't, so ask for a scan that
+        -- doesn't take "bags look identical" for an answer.
+        local advisor = JustQuest.Core.GetModule("GearAdvisor")
+        if advisor and advisor.RescanNow then
+            advisor.RescanNow()
         end
     end
     
@@ -559,6 +579,8 @@ local function HandleSlashCommand(msg)
         print("  |cff00ff00/jq config|r - Open settings panel")
         print("  |cff00ff00/jq status|r - Show current status")
         print("  |cff00ff00/jq debug [on|off]|r - Toggle debug logging")
+        print("  |cff00ff00/jq gear [on|off]|r - Auto-swap gear on spec change")
+        print("  |cff00ff00/jq gear smart|full|r - Swap weapons/trinkets/rings, or all gear")
         print("")
         print("|cffffcc00Container Management:|r")
         print("  |cff00ff00Shift-Click|r in config UI - Add container to whitelist (easiest!)")
@@ -656,6 +678,60 @@ local function HandleSlashCommand(msg)
         return
     end
 
+    -- Gear Advisor (Pawn-powered upgrade recommendations)
+    if cmd == "gear" or cmd == "g" then
+        local sub = (rest and strsplit(" ", rest):lower()) or ""
+        if sub == "check" or sub == "debug" then
+            local advisor = JustQuest.Core.GetModule("GearAdvisor")
+            if advisor and advisor.Diagnose then
+                advisor.Diagnose()
+            else
+                print("|cff00ccffJustQuest:|r Gear Advisor not loaded.")
+            end
+        elseif sub == "clear" then
+            Config.Set("gearSwap", "ignoreItems", {})
+            print("|cff00ccffJustQuest:|r Gear Advisor never-recommend list cleared.")
+            local advisor = JustQuest.Core.GetModule("GearAdvisor")
+            if advisor and advisor.RescanNow then advisor.RescanNow() end
+        elseif sub == "on" or sub == "off" then
+            Config.Set("gearSwap", "advisorEnabled", sub == "on")
+            print("|cff00ccffJustQuest:|r Gear Advisor " .. (sub == "on" and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
+        elseif sub == "" then
+            local cur = Config.Get("gearSwap", "advisorEnabled")
+            Config.Set("gearSwap", "advisorEnabled", not cur)
+            print("|cff00ccffJustQuest:|r Gear Advisor " .. (not cur and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
+        else
+            print("|cffff6666Usage:|r /jq gear [on|off|check|clear]")
+        end
+        return
+    end
+
+    -- Delve automation (powers / tier)
+    if cmd == "delve" or cmd == "d" then
+        local sub = (rest and strsplit(" ", rest):lower()) or ""
+        if sub == "on" or sub == "off" or sub == "" then
+            local value
+            if sub == "" then
+                value = not Config.Get("delve", "autoAcceptPower")
+            else
+                value = (sub == "on")
+            end
+            Config.Set("delve", "autoAcceptPower", value)
+            print("|cff00ccffJustQuest:|r Delve power auto-take " .. (value and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
+        elseif sub == "check" or sub == "status" then
+            local delve = JustQuest.Core.GetModule("DelveEngine")
+            local inDelve = delve and delve.IsInDelve and delve.IsInDelve()
+            print("|cff00ccffJustQuest:|r In a delve: " .. (inDelve and "|cff00ff00YES|r" or "|cff888888no|r"))
+            print("  auto-take powers: " .. tostring(Config.Get("delve", "autoAcceptPower")))
+            print("  auto-select tier: " .. tostring(Config.Get("delve", "autoTier"))
+                  .. " (tier " .. tostring(Config.Get("delve", "preferredTier"))
+                  .. ", go straight in: " .. tostring(Config.Get("delve", "autoEnter")) .. ")")
+        else
+            print("|cffff6666Usage:|r /jq delve [on|off|check]")
+        end
+        return
+    end
+
     -- Container management
     if cmd == "container" or cmd == "c" then
         if not rest then
@@ -685,7 +761,7 @@ local function HandleSlashCommand(msg)
                     print("  " .. itemID .. " - " .. itemName)
                 end
             else
-                print("|cff00ff00Whitelist:|r Empty (using database fallback if enabled)")
+                print("|cff00ff00Whitelist:|r Empty (openable containers are auto-detected by mode)")
             end
             
             print("")
@@ -707,12 +783,13 @@ local function HandleSlashCommand(msg)
             
             print("|cff00ccff" .. string.rep("=", 39) .. "|r")
             
-            local useFallback = Config.Get("containers", "useDatabaseFallback")
-            if useFallback then
-                print("|cff888888Database fallback: |cff00ff00enabled|r|r")
-            else
-                print("|cffffaa00Tip:|r Open config (|cff00ff00/jq config|r), then Shift-Click containers to add!")
-            end
+            local modeLabels = {
+                list = "My list only",
+                safe = "Safe containers (clams, chests, coin sacks)",
+                all  = "Everything openable (incl. lockboxes)",
+            }
+            local mode = Config.Get("containers", "mode") or "safe"
+            print("|cff888888Auto-open mode: |cff00ff00" .. (modeLabels[mode] or mode) .. "|r|r")
             return
         end
         
@@ -814,7 +891,7 @@ function Config.Initialize()
         local AceDB = LibStub("AceDB-3.0", true)
         if AceDB then
             local ok, res = pcall(function()
-                return AceDB:New("JustQuestDB", defaults, true)
+                return AceDB:New("JustQuestDB", defaultConfig, true)
             end)
             if ok and res then
                 dbObj = res

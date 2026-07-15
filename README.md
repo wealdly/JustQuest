@@ -49,9 +49,10 @@ Hides quest and gossip frames during automation for a seamless experience. Frame
 
 ### Container Auto-Opening
 
-- Opens whitelisted containers received as quest rewards
+- **Auto-Open modes:** *My list only*, *Safe containers* (default — clams, chests, coin sacks, and the like), or *Everything openable* (also lockboxes)
+- Recognizes openable containers automatically from live game data — no need to whitelist each one
+- Rogues can auto-pick lockboxes (in *Everything openable* mode)
 - Customizable whitelist and blacklist via `/jq container` commands or the config UI
-- Built-in database of common quest reward containers
 - Respects bank/void storage (won't open containers at the bank)
 
 ### LFG Quick Start

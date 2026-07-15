@@ -2,8 +2,13 @@
 
 local ADDON_NAME, JustQuest = ...
 
-local SAFE_CONTAINERS = JustQuest.Database.SAFE_CONTAINERS
 local DANGEROUS_CONTAINERS = JustQuest.Database.DANGEROUS_CONTAINERS
+-- DB2-generated (ContainerData.lua): items with ITEM_FLAG_OPENABLE, split by LockID. Only a
+-- FALLBACK — the live info.hasLoot read is primary (see ShouldOpen).
+local OPENABLE_CONTAINERS = JustQuest.Database.OPENABLE_CONTAINERS  -- free-open (LockID == 0)
+local LOCKED_CONTAINERS   = JustQuest.Database.LOCKED_CONTAINERS    -- lockboxes (LockID != 0)
+
+local PICK_LOCK_SPELL = 1804  -- Rogue "Pick Lock"
 
 local ContainerEngine = {}
 
@@ -16,8 +21,6 @@ local lastOpenTime = 0
 local isProcessing = false
 local failedContainers = {}
 local lastScanTime = 0
-local lastCleanupTime = 0
-local containerLockState = {}
 local pendingContainerUnlock = nil
 local lastBagUpdateTime = 0
 local bagUpdateCount = 0
@@ -29,7 +32,8 @@ local configCache = {
     enabled = false,
     whitelist = {},
     blacklist = {},
-    useDatabaseFallback = false,
+    mode = "safe",
+    rogueAutoPick = false,
     lastUpdate = 0,
 }
 
@@ -40,7 +44,8 @@ local function UpdateConfigCache()
     configCache.enabled = config.Get("containers", "enabled") or false
     configCache.whitelist = config.Get("containers", "whitelist") or {}
     configCache.blacklist = config.Get("containers", "blacklist") or {}
-    configCache.useDatabaseFallback = config.Get("containers", "useDatabaseFallback") or false
+    configCache.mode = config.Get("containers", "mode") or "safe"
+    configCache.rogueAutoPick = config.Get("containers", "rogueAutoPick") or false
     configCache.lastUpdate = GetTime()
 end
 
@@ -76,19 +81,31 @@ local function ForEachBagItem()
     end)
 end
 
--- User-driven whitelist system - simplified from monolithic database
--- Users add containers they want automated, remove ones that cause issues
-local function IsSafeContainer(itemID)
-    -- Check user whitelist (primary system)
+-- Whether to auto-open this bag item. PRIMARY signal is the LIVE ContainerItemInfo:
+-- info.hasLoot is the runtime ITEM_FLAG_OPENABLE ("right-click to open") and info.isLocked
+-- separates free-open containers from lockboxes — so the normal path needs no item DB and is
+-- always current. FALLBACK: if the live flag can't be read (unexpected nil / secret value),
+-- use the generated ContainerData.lua list by itemID (regenerate via tools/gen_containers.py).
+-- Either way, the isLocked branch in ProcessContainerItem still gates lockboxes at runtime.
+local function ShouldOpen(info)
+    local itemID = info.itemID
+    -- User whitelist forces open — covers loot bags that open via an on-use spell (no flag).
     if configCache.whitelist[itemID] then
         return true
     end
-    
-    -- Optional: Fallback to database if user hasn't customized
-    if configCache.useDatabaseFallback and SAFE_CONTAINERS then
-        return SAFE_CONTAINERS[itemID] ~= nil
+
+    local mode = configCache.mode
+    if mode == "list" then return false end  -- whitelist only
+
+    if type(info.hasLoot) == "boolean" then
+        if not info.hasLoot then return false end          -- not an openable container
+        if mode == "safe" then return not info.isLocked end  -- free-open only; lockboxes wait
+        return true                                          -- "all": free-open + lockboxes
     end
-    
+
+    -- Fallback: live flag unreadable — use the baked list.
+    if OPENABLE_CONTAINERS and OPENABLE_CONTAINERS[itemID] then return true end
+    if mode == "all" and LOCKED_CONTAINERS and LOCKED_CONTAINERS[itemID] then return true end
     return false
 end
 
@@ -98,11 +115,11 @@ local function IsDangerousContainer(itemID)
         return true
     end
     
-    -- Optional: Check known dangerous containers if database enabled
-    if configCache.useDatabaseFallback and DANGEROUS_CONTAINERS then
-        return DANGEROUS_CONTAINERS[itemID] ~= nil
+    -- Built-in never-open defaults (belt-and-suspenders over the live hasLoot check).
+    if DANGEROUS_CONTAINERS and DANGEROUS_CONTAINERS[itemID] then
+        return true
     end
-    
+
     return false
 end
 
@@ -126,43 +143,46 @@ local function GetThrottleDelay()
     return delay * multiplier
 end
 
--- Detect bag sorting by tracking rapid BAG_UPDATE events (addon sorters or manual moves)
-local function IsBagSortingActive()
-    local currentTime = GetTime()
-    
+-- Detect bag sorting by tracking rapid BAG_UPDATE events (addon sorters or manual moves).
+-- Recording the count and querying the result are split: RecordBagUpdate() must run
+-- EXACTLY ONCE per BAG_UPDATE_DELAYED, IsBagSortingActive() is a side-effect-free read.
+-- Folding both into one call double-counted every event (the counter was bumped once by
+-- OnBagUpdateDelayed and again by OpenBagContainers in the same frame), tripping the
+-- "sorting" state at half its intended 3-event threshold and wrongly suppressing
+-- container opening during normal looting.
+local function DecayBagSort(currentTime)
     if isBagSortActive and currentTime - lastBagUpdateTime > 2.0 then
         isBagSortActive = false
         bagUpdateCount = 0
-        return false
     end
-    
-    -- BAG_UPDATE from our own container opening — don't count toward sort detection
-    if pendingContainerUnlock and (currentTime - pendingContainerUnlock.timestamp < 2.0) then
+end
+
+local function RecordBagUpdate()
+    local currentTime = GetTime()
+    DecayBagSort(currentTime)
+
+    -- BAG_UPDATE from our own container opening, or while expecting quest reward
+    -- containers — not sorting. Refresh the activity time but don't count it.
+    if (pendingContainerUnlock and (currentTime - pendingContainerUnlock.timestamp < 2.0))
+       or next(expectedContainers) then
         lastBagUpdateTime = currentTime
-        return isBagSortActive
+        return
     end
-    
-    -- BAG_UPDATE while expecting quest reward containers — not sorting
-    if next(expectedContainers) then
-        lastBagUpdateTime = currentTime
-        return isBagSortActive
-    end
-    
+
     if currentTime - lastBagUpdateTime < 0.5 then
         bagUpdateCount = bagUpdateCount + 1
-        
         if bagUpdateCount >= 3 then
-            if not isBagSortActive then
-                isBagSortActive = true
-            end
-            lastBagUpdateTime = currentTime
-            return true
+            isBagSortActive = true
         end
     else
         bagUpdateCount = 1
     end
-    
+
     lastBagUpdateTime = currentTime
+end
+
+local function IsBagSortingActive()
+    DecayBagSort(GetTime())
     return isBagSortActive
 end
 
@@ -220,47 +240,6 @@ local function ReduceAllFailurePenalties()
     end
 end
 
-local function MarkContainerLocked(containerKey)
-    containerLockState[containerKey] = GetTime()
-end
-
-local function ClearContainerLock(containerKey)
-    containerLockState[containerKey] = nil
-end
-
-local function CleanupStaleLocks()
-    local currentTime = GetTime()
-    local LOCK_TIMEOUT = 2.0
-    
-    if not next(containerLockState) then return end
-    
-    -- Quick pass every call, full bag validation every ~5s
-    if currentTime - lastCleanupTime < 5.0 then
-        for key, lockTime in pairs(containerLockState) do
-            if currentTime - lockTime > LOCK_TIMEOUT then
-                containerLockState[key] = nil
-            end
-        end
-        return
-    end
-    
-    lastCleanupTime = currentTime
-    
-    local validItems = {}
-    for bagID, slotID, info in ForEachBagItem() do
-        validItems[GetContainerKey(bagID, slotID, info.itemID)] = true
-    end
-
-    local cleaned = 0
-    for key, lockTime in pairs(containerLockState) do
-        local isStale = not validItems[key] or (currentTime - lockTime > LOCK_TIMEOUT)
-        if isStale then
-            containerLockState[key] = nil
-            cleaned = cleaned + 1
-        end
-    end
-end
-
 local function CleanupFailedContainers()
     local currentTime = GetTime()
     local cleaned = 0
@@ -282,92 +261,92 @@ local function CleanupFailedContainers()
     return cleaned
 end
 
-local function ProcessContainerItem(bagID, slotID, info, currentTime, skippedLocked, skippedRetry)
-    -- Check state FIRST — quest/gossip automation may start between scan and here
+-- Rogue auto-pick: cast Pick Lock on a locked box and apply it to the slot; a pickable box
+-- unlocks async (ITEM_LOCK_CHANGED) and the normal open path loots it on the next scan.
+-- Gated: "all" mode only, opted in, Rogue who knows the spell, never in combat. It's
+-- attempt-based (no lock-type data needed) — a key-required or too-high-skill box simply
+-- doesn't unlock and burns its retry budget (see the caller), then is left alone. The cast
+-- is pcall'd because a non-hardware-event cast can be blocked. (Needs in-game validation.)
+local function TryPickLock(bagID, slotID)
+    if not (configCache.rogueAutoPick and configCache.mode == "all") then return false end
+    if InCombatLockdown() then return false end
+    if not (IsSpellKnown and IsSpellKnown(PICK_LOCK_SPELL)) then return false end
+
+    -- pcall result is intentionally ignored: whether the cast takes effect or is blocked, we
+    -- return "attempted" so the caller charges a retry — that's what bounds attempts on a box
+    -- that can't actually be picked (key-required, too-high skill, or a blocked cast).
+    pcall(function()
+        if C_Spell and C_Spell.CastSpellByID then
+            C_Spell.CastSpellByID(PICK_LOCK_SPELL)
+        elseif CastSpellByID then
+            CastSpellByID(PICK_LOCK_SPELL)
+        end
+        C_Container.UseContainerItem(bagID, slotID)  -- applies the pending pick to this box
+    end)
+    return true
+end
+
+-- Returns true = opened this item (stop the scan), nil = stop the scan (busy/combat/failure),
+-- false = not this one, continue to the next bag item.
+local function ProcessContainerItem(bagID, slotID, info, currentTime)
+    -- Check state FIRST — quest/gossip automation may start between scan and here.
     local safety = GetSafetyEngine()
-    if not (safety and safety.IsState("IDLE")) then
-        return nil, skippedLocked, skippedRetry
-    end
+    if not (safety and safety.IsState("IDLE")) then return nil end
 
     local itemID = info.itemID
+    if IsDangerousContainer(itemID) then return false end  -- user blacklist
+    if not ShouldOpen(info) then return false end
 
-    if IsDangerousContainer(itemID) then
-        return false, skippedLocked, skippedRetry
-    end
-    
-    if not IsSafeContainer(itemID) then
-        return false, skippedLocked, skippedRetry
-    end
-    
     local containerKey = GetContainerKey(bagID, slotID, itemID)
-    local itemStart, itemDuration, itemEnable = C_Container.GetContainerItemCooldown(bagID, slotID)
+
+    -- On cooldown (e.g. just used) — try a later scan.
+    local itemStart, itemDuration = C_Container.GetContainerItemCooldown(bagID, slotID)
     if itemStart and itemStart > 0 and itemDuration and itemDuration > 0 then
-        return false, skippedLocked, skippedRetry + 1
+        return false
     end
-    
+
     if info.isLocked then
-        MarkContainerLocked(containerKey)
-        return false, skippedLocked + 1, skippedRetry
-    end
-    
-    -- Stale lock (>2s old, item not actually locked) — clear and proceed
-    if containerLockState[containerKey] then
-        local lockAge = GetTime() - containerLockState[containerKey]
-        if lockAge > 2.0 then
-            ClearContainerLock(containerKey)
-        else
-            return false, skippedLocked + 1, skippedRetry
+        -- Rogue auto-pick (retry-bounded): a pickable box unlocks and opens on a later scan; a
+        -- box that can't be picked charges its retry budget, then waits like any locked box.
+        if ShouldRetryContainer(containerKey) and TryPickLock(bagID, slotID) then
+            MarkContainerFailed(containerKey, "pick_attempt")
+            -- Pick Lock unlocks async and (unlike a key) consumes nothing, so no BAG_UPDATE
+            -- follows to re-scan. Schedule one (debounced) so the unlocked box gets opened.
+            local services = GetServices()
+            if services and services.ScheduleOnce then
+                services.ScheduleOnce("container_pick_rescan", 1.0, ContainerEngine.OnBagUpdateDelayed)
+            end
         end
+        return false
     end
-    ClearContainerLock(containerKey)
-    
-    if not ShouldRetryContainer(containerKey) then
-        return false, skippedLocked, skippedRetry + 1
-    end
-    
-    if InCombatLockdown() then
-        return nil, skippedLocked, skippedRetry
-    end
-    
+
+    if not ShouldRetryContainer(containerKey) then return false end
+    if InCombatLockdown() then return nil end
+
     local success, err = pcall(C_Container.UseContainerItem, bagID, slotID)
-    
     if success then
-        -- UseContainerItem() succeeds even if item can't be opened,
-        -- so we use pending state + ITEM_LOCK_CHANGED to confirm.
+        -- UseContainerItem() reports success even if nothing opened, so we confirm the open via
+        -- pendingContainerUnlock + ITEM_LOCK_CHANGED rather than trusting this call.
         ClearContainerFailure(containerKey)
         ReduceAllFailurePenalties()
-        
-        -- Clear expected container if this was one we were waiting for
-        if expectedContainers[itemID] then
-            expectedContainers[itemID] = nil
-        end
-        
-        -- Optimistic: set pending before lock is confirmed
-        pendingContainerUnlock = {
-            bagID = bagID,
-            slotID = slotID,
-            itemID = itemID,
-            timestamp = GetTime(),
-        }
-        
-        return true, skippedLocked, skippedRetry
-    else
-        local errStr = tostring(err)
-        local maxRetries = JustQuest.Constants.LIMITS.CONTAINER_MAX_RETRIES
-        
-        if errStr:find("Action only available") or errStr:find("protected") or errStr:find("taint") then
-            failedContainers[containerKey] = {
-                retryCount = maxRetries, 
-                lastAttempt = currentTime, 
-                firstFailureTime = GetTime(), 
-                lastReason = "Protected"
-            }
-        else
-            MarkContainerFailed(containerKey, errStr)
-        end
-        
-        return nil, skippedLocked, skippedRetry
+        expectedContainers[itemID] = nil
+        pendingContainerUnlock = { bagID = bagID, slotID = slotID, itemID = itemID, timestamp = GetTime() }
+        return true
     end
+
+    local errStr = tostring(err)
+    if errStr:find("Action only available") or errStr:find("protected") or errStr:find("taint") then
+        -- Protected/taint failure won't clear on retry — spend the whole budget at once.
+        failedContainers[containerKey] = {
+            retryCount = JustQuest.Constants.LIMITS.CONTAINER_MAX_RETRIES,
+            lastAttempt = currentTime,
+            firstFailureTime = GetTime(),
+            lastReason = "Protected",
+        }
+    else
+        MarkContainerFailed(containerKey, errStr)
+    end
+    return nil  -- stop this scan on a failure
 end
 
 function ContainerEngine.OpenBagContainers()
@@ -423,76 +402,40 @@ function ContainerEngine.OpenBagContainers()
         return 
     end
     
-    -- If ITEM_LOCK_CHANGED is missed, pendingContainerUnlock can block all processing.
-    -- Timeout at 1.0s (reduced from 2.0s) for faster recovery.
+    -- One open is in flight: wait for ITEM_LOCK_CHANGED to confirm it before scanning again.
+    -- If that event is missed, resolve here — the item is gone/changed/unlocked, or a 1.0s
+    -- timeout gives up (don't mark failed: it may have opened).
     if pendingContainerUnlock and pendingContainerUnlock.timestamp then
-        local pendingAge = currentTime - pendingContainerUnlock.timestamp
-        if pendingAge > 1.0 then
-            local key = GetContainerKey(
-                pendingContainerUnlock.bagID,
-                pendingContainerUnlock.slotID,
-                pendingContainerUnlock.itemID
-            )
-            ClearContainerLock(key)
-            
-            -- Don't mark as failed: may have succeeded but event was missed
+        if currentTime - pendingContainerUnlock.timestamp > 1.0 then
             pendingContainerUnlock = nil
         else
-            -- Still waiting for unlock event, but check if item still exists
             local info = C_Container.GetContainerItemInfo(pendingContainerUnlock.bagID, pendingContainerUnlock.slotID)
-            if not info or info.itemID ~= pendingContainerUnlock.itemID then
-                -- Container was consumed (success!) or moved - clear pending state
-                pendingContainerUnlock = nil
-            elseif not info.isLocked then
-                -- Container unlocked but event didn't fire - clear and continue
-                local key = GetContainerKey(
-                    pendingContainerUnlock.bagID,
-                    pendingContainerUnlock.slotID,
-                    pendingContainerUnlock.itemID
-                )
-                ClearContainerLock(key)
-                pendingContainerUnlock = nil
+            if not info or info.itemID ~= pendingContainerUnlock.itemID or not info.isLocked then
+                pendingContainerUnlock = nil  -- consumed, moved, or unlocked
             else
-                -- Still locked and waiting - skip this scan
-                return
+                return  -- still locked and waiting — skip this scan
             end
         end
     end
-    
+
     local cleanupInterval = JustQuest.Constants.TIMING.CONTAINER_CLEANUP_INTERVAL
     if currentTime - lastScanTime > cleanupInterval then
         CleanupFailedContainers()
         lastScanTime = currentTime
     end
-    
-    CleanupStaleLocks()
-    
-    local openedAny = false
-    local itemsFound = 0
-    local skippedRetry = 0
-    local skippedLocked = 0
-    
+
     for bagID, slotID, info in ForEachBagItem() do
-        itemsFound = itemsFound + 1
-        
-        local result, newSkippedLocked, newSkippedRetry = ProcessContainerItem(bagID, slotID, info, currentTime, skippedLocked, skippedRetry)
-        
-        -- Update skip counters if returned
-        if newSkippedLocked then skippedLocked = newSkippedLocked end
-        if newSkippedRetry then skippedRetry = newSkippedRetry end
-        
+        local result = ProcessContainerItem(bagID, slotID, info, currentTime)
         if result == true then
-            -- Successfully opened container
             lastOpenTime = currentTime
-            openedAny = true
+            local svc = GetServices()
+            if svc and svc.NoteAutomation then svc.NoteAutomation("containers") end
             break
         elseif result == nil then
-            -- Stop processing (combat or failure)
-            break
+            break  -- stop (busy/combat/failure)
         end
-        -- result == false means continue to next item
+        -- false = continue to the next bag item
     end
-    
 end
 
 -- ============================================================
@@ -500,9 +443,10 @@ end
 -- ============================================================
 
 function ContainerEngine.OnBagUpdateDelayed()
-    -- Track BAG_UPDATE_DELAYED for sort detection even when we skip opening
-    IsBagSortingActive()
-    
+    -- Track BAG_UPDATE_DELAYED for sort detection even when we skip opening.
+    -- Recorded once here; OpenBagContainers only READS the state (IsBagSortingActive).
+    RecordBagUpdate()
+
     if isProcessing then
         return
     end
@@ -585,10 +529,13 @@ end
 
 function ContainerEngine.OnItemLockChanged(bagID, slotID)
     if not (bagID and slotID) then return end
-    
-    local info = C_Container.GetContainerItemInfo(bagID, slotID)
-    
-    -- ⚡ FIX: Handle case where item is consumed/moved (info is nil)
+
+    -- Guard the read like every other GetContainerItemInfo call in this file:
+    -- ITEM_LOCK_CHANGED reaches here straight from OnEvent with no outer pcall.
+    local ok, info = pcall(C_Container.GetContainerItemInfo, bagID, slotID)
+    if not ok then return end
+
+    -- Handle case where item is consumed/moved (info is nil)
     if not info then
         -- Item no longer exists - check if this was our pending container
         if pendingContainerUnlock and 
@@ -607,24 +554,16 @@ function ContainerEngine.OnItemLockChanged(bagID, slotID)
         return
     end
     
-    local containerKey = GetContainerKey(bagID, slotID, info.itemID)
-    
-    if info.isLocked then
-        MarkContainerLocked(containerKey)
-    else
-        ClearContainerLock(containerKey)
-        
-        if pendingContainerUnlock and 
-           pendingContainerUnlock.bagID == bagID and 
-           pendingContainerUnlock.slotID == slotID and
-           pendingContainerUnlock.itemID == info.itemID then
-            
-            pendingContainerUnlock = nil
-            lastOpenTime = 0
-            
-            if not isProcessing then
-                ContainerEngine.OnBagUpdateDelayed()
-            end
+    -- Our pending open resolves when that box unlocks — clear it and rescan.
+    if not info.isLocked
+       and pendingContainerUnlock
+       and pendingContainerUnlock.bagID == bagID
+       and pendingContainerUnlock.slotID == slotID
+       and pendingContainerUnlock.itemID == info.itemID then
+        pendingContainerUnlock = nil
+        lastOpenTime = 0
+        if not isProcessing then
+            ContainerEngine.OnBagUpdateDelayed()
         end
     end
 end
@@ -680,9 +619,7 @@ function ContainerEngine.OnDisable()
     lastOpenTime = 0
     isProcessing = false
     failedContainers = {}
-    containerLockState = {}
     lastScanTime = 0
-    lastCleanupTime = 0
     pendingContainerUnlock = nil
     lastBagUpdateTime = 0
     bagUpdateCount = 0

@@ -17,11 +17,13 @@ local state = "IDLE"
 local stateReason = nil
 local stateStartTime = GetTime()
 
--- Recent gossip-option selections for the CURRENT npc (loop prevention).
--- Not keyed by GUID: under addon taint UnitGUID returns a "secret value" that
--- cannot be used as a table key. Only one gossip NPC is active at a time, so a
--- single history suffices; it is cleared on NPC change / gossip close.
-local selectionHistory = {}
+-- Option IDs already auto-selected for the CURRENT npc interaction (loop prevention).
+-- Auto-selecting the exact same option twice is never legitimate automation — it means
+-- the menu is looping — so each option is auto-selectable at most once per interaction,
+-- no matter how slowly it re-shows. Not keyed by GUID: under addon taint UnitGUID
+-- returns a "secret value" unusable as a table key. Only one gossip NPC is active at a
+-- time, so a single set suffices; it is cleared on NPC change / gossip close.
+local selectedOptions = {}
 local statusAvailable      = nil
 local statusAlreadyComplete = nil
 
@@ -199,55 +201,22 @@ end
 -- Repeat/Selection Tracking (loop prevention)
 -- ============================================================
 
-function SafetyEngine.ShouldSkipRepeat(optionID, totalOptions)
-    if not optionID or #selectionHistory == 0 then return false end
-
-    local config = GetConfig()
-    local ttl = config and config.Get("advanced", "gossipRepeatWindow") or JustQuest.Constants.TIMING.GOSSIP_REPEAT_WINDOW
-
-    -- Reduce TTL for single options (likely "back" navigation)
-    if totalOptions and totalOptions == 1 then
-        ttl = ttl * 0.25
+function SafetyEngine.ShouldSkipRepeat(optionID)
+    if not optionID then return false end
+    if selectedOptions[optionID] then
+        DebugSafety("Repeat blocked: optionID=" .. tostring(optionID) .. " already auto-selected this interaction")
+        return true
     end
-
-    local now = GetTime()
-    for _, entry in ipairs(selectionHistory) do
-        if entry.optionID == optionID and (now - entry.time) < ttl then
-            DebugSafety(string.format("Repeat blocked: optionID=%s, %.2fs ago, ttl=%.2fs",
-                tostring(optionID), now - entry.time, ttl))
-            return true
-        end
-    end
-
     return false
 end
 
 function SafetyEngine.MarkSelection(optionID)
-    if not optionID then return end
-
-    local now = GetTime()
-    local config = GetConfig()
-    local ttl = config and config.Get("advanced", "gossipRepeatWindow") or JustQuest.Constants.TIMING.GOSSIP_REPEAT_WINDOW
-
-    -- Prune expired entries in-place to avoid allocating a new table each call.
-    local h = selectionHistory
-    local write = 0
-    for read = 1, #h do
-        if (now - h[read].time) < ttl then
-            write = write + 1
-            h[write] = h[read]
-        end
-    end
-    for i = write + 1, #h do h[i] = nil end
-
-    -- Append new entry and cap history at 20.
-    h[write + 1] = { optionID = optionID, time = now }
-    while #h > 20 do table.remove(h, 1) end
+    if optionID then selectedOptions[optionID] = true end
 end
 
 -- Clear selection history (NPC changed or gossip closed).
 function SafetyEngine.ClearSelections()
-    wipe(selectionHistory)
+    wipe(selectedOptions)
 end
 
 -- ============================================================
@@ -358,6 +327,21 @@ function SafetyEngine.ShouldAcceptQuest(questID, frequency)
         end
     end
 
+    return true
+end
+
+-- Gate for TURNING IN / auto-completing an already-accepted quest (auto-quest
+-- "click here to complete" popups and QUEST_AUTOCOMPLETE). Unlike ShouldAcceptQuest,
+-- this must NOT apply accept-type policy (PvP/escort/repeatable prefs decide what to
+-- ACCEPT, not what to hand in) — a quest already in the log should complete unless the
+-- player explicitly blocklisted it. Gating turn-in on accept policy is why some push
+-- quests sat stuck at "click here to complete".
+function SafetyEngine.ShouldCompleteQuest(questID)
+    if not questID then return true end
+    local services = GetServices()
+    if services and services.IsQuestBlocked and services.IsQuestBlocked(questID) then
+        return false
+    end
     return true
 end
 

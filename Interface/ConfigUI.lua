@@ -42,6 +42,12 @@ local function CreateAccessor(module, key)
     }
 end
 
+-- Grey out Gear Advisor widgets unless the advisor is enabled (shared by all of them).
+local function advisorDisabled()
+    local c = JustQuest.Core.GetModule("Config")
+    return not (c and c.Get("gearSwap", "advisorEnabled"))
+end
+
 -- ============================================================
 -- Option Builders
 -- ============================================================
@@ -122,6 +128,14 @@ local function CreateGeneralOptions()
                         get = CreateAccessor(nil, "skipCinematics").get,
                         set = CreateAccessor(nil, "skipCinematics").set,
                     },
+                    automationSummary = {
+                        type = "toggle",
+                        name = "Summarize In Chat",
+                        desc = "Print a concise chat line at the end of each automation chain (e.g. \"accepted 2, turned in 1, opened 1 container\").",
+                        order = 3.5,
+                        get = CreateAccessor(nil, "automationSummary").get,
+                        set = CreateAccessor(nil, "automationSummary").set,
+                    },
                     resetInstanceOnExit = {
                         type = "toggle",
                         name = "Reset Instance On Exit",
@@ -136,9 +150,297 @@ local function CreateGeneralOptions()
     }
 end
 
+-- Grey out the delve widgets that hang off a toggle that's currently off.
+local function delveNoPower()
+    local c = JustQuest.Core.GetModule("Config")
+    return not (c and c.Get("delve", "autoAcceptPower"))
+end
+
+local function delveNoTier()
+    local c = JustQuest.Core.GetModule("Config")
+    return not (c and c.Get("delve", "autoTier"))
+end
+
+local function CreateDelveOptions()
+    return {
+        type = "group",
+        name = "Delves",
+        order = 3.6,  -- after Gear, before Containers
+        args = {
+            intro = {
+                type = "description",
+                order = 1,
+                fontSize = "medium",
+                name = "Delve-only automation. Everywhere else a pop-up choice is always left to you — this is the one place you can opt out of being asked, because a delve power is offered one at a time, it's always worth taking, and there's nothing to decide.\n\n" ..
+                       "|cffff9999The difficulty picker is otherwise left alone entirely: JustQuest never touches a tier unless you turn on Auto-Select Tier below.|r",
+            },
+
+            powers = {
+                type = "group",
+                name = "Delve Powers",
+                inline = true,
+                order = 2,
+                args = {
+                    autoAcceptPower = {
+                        type = "toggle",
+                        name = "Auto-Take Powers",
+                        desc = "Take the delve power automatically instead of being asked for a click you were always going to make.",
+                        width = "full",
+                        order = 1,
+                        get = CreateAccessor("delve", "autoAcceptPower").get,
+                        set = CreateAccessor("delve", "autoAcceptPower").set,
+                    },
+                    hidePowerFrame = {
+                        type = "toggle",
+                        name = "Hide The Power Pop-Up",
+                        desc = "Hide the power window while it's being taken for you. It comes back on its own whenever the choice returns to you.",
+                        width = "full",
+                        order = 2,
+                        disabled = delveNoPower,
+                        get = CreateAccessor("delve", "hidePowerFrame").get,
+                        set = CreateAccessor("delve", "hidePowerFrame").set,
+                    },
+                },
+            },
+
+            tier = {
+                type = "group",
+                name = "Difficulty",
+                inline = true,
+                order = 3,
+                args = {
+                    autoTier = {
+                        type = "toggle",
+                        name = "Auto-Select Tier",
+                        desc = "Pick your usual tier for you when the delve picker opens. Nothing is entered — you still press the button.",
+                        width = "full",
+                        order = 1,
+                        get = CreateAccessor("delve", "autoTier").get,
+                        set = CreateAccessor("delve", "autoTier").set,
+                    },
+                    preferredTier = {
+                        type = "range",
+                        name = "Tier",
+                        desc = "Which tier to select. Skipped if you can't queue for it yet.",
+                        min = 1, max = 11, step = 1,
+                        order = 2,
+                        disabled = delveNoTier,
+                        get = CreateAccessor("delve", "preferredTier").get,
+                        set = CreateAccessor("delve", "preferredTier").set,
+                    },
+                    autoEnter = {
+                        type = "toggle",
+                        name = "And Go Straight In",
+                        desc = "Enter the delve as soon as the tier is selected, without pressing the button.\n\n" ..
+                               "|cffff9999This walks you into the delve the moment you open the picker.|r",
+                        width = "full",
+                        order = 3,
+                        disabled = delveNoTier,
+                        get = CreateAccessor("delve", "autoEnter").get,
+                        set = CreateAccessor("delve", "autoEnter").set,
+                    },
+                },
+            },
+        },
+    }
+end
+
+local function CreateGearOptions()
+    return {
+        type = "group",
+        name = "Gear",
+        order = 3.5,  -- after NPCs, before Containers
+        args = {
+            intro = {
+                type = "description",
+                order = 1,
+                fontSize = "medium",
+                name = "Scores the gear in your bags with Pawn and, when it finds an upgrade for your current spec, prompts you to equip it — one at a time, with |cff00ff00Equip|r / |cffff5555Never|r. " ..
+                       "Turn on Auto-Equip to skip the prompt and just equip.\n\n" ..
+                       "|cffff9999Needs a Pawn scale for the spec you're playing.|r  Trinkets aren't scored (a Pawn limitation).",
+            },
+
+            settings = {
+                type = "group",
+                name = "Advisor",
+                inline = true,
+                order = 2,
+                args = {
+                    advisorEnabled = {
+                        type = "toggle",
+                        name = "Recommend Upgrades",
+                        desc = "Scan your bags and prompt you to equip gear upgrades for your current spec.",
+                        order = 1,
+                        get = CreateAccessor("gearSwap", "advisorEnabled").get,
+                        set = CreateAccessor("gearSwap", "advisorEnabled").set,
+                    },
+                    autoEquip = {
+                        type = "toggle",
+                        name = "Auto-Equip (skip the prompt)",
+                        desc = "Equip recommended upgrades automatically — as you loot, and the best gear for a spec when you switch to it (out of combat). " ..
+                               "Bind-on-equip items are never auto-equipped, so nothing binds by surprise.",
+                        order = 2,
+                        disabled = advisorDisabled,
+                        get = CreateAccessor("gearSwap", "autoEquip").get,
+                        set = CreateAccessor("gearSwap", "autoEquip").set,
+                    },
+                    announce = {
+                        type = "toggle",
+                        name = "On-Screen Prompts & Sound",
+                        desc = "Show the pop-up prompt (with a sound). Off = chat only, and the config panel below.",
+                        order = 3,
+                        disabled = advisorDisabled,
+                        get = CreateAccessor("gearSwap", "announce").get,
+                        set = CreateAccessor("gearSwap", "announce").set,
+                    },
+                    minUpgradePct = {
+                        type = "range",
+                        name = "Minimum Upgrade",
+                        desc = "Ignore upgrades smaller than this, to avoid noise from tiny gains.",
+                        min = 1, max = 25, step = 1,
+                        order = 4,
+                        disabled = advisorDisabled,
+                        get = CreateAccessor("gearSwap", "minUpgradePct").get,
+                        set = CreateAccessor("gearSwap", "minUpgradePct").set,
+                    },
+                    weightItemLevel = {
+                        type = "toggle",
+                        name = "Weight Item Level (Pawn)",
+                        desc = "Adds Item Level to Pawn as a weightable stat, so a big item-level jump counts even when secondary stats are flat. " ..
+                               "After enabling, give it a weight in your Pawn scale (e.g. ItemLevel=5) or in Pawn's stat list under \"JustQuest\".\n\n" ..
+                               "|cffff9999Affects all Pawn scoring — tooltips, reward picks, and the advisor — and modifies Pawn globally.|r",
+                        width = "full",
+                        order = 5,
+                        get = CreateAccessor("gearSwap", "weightItemLevel").get,
+                        set = CreateAccessor("gearSwap", "weightItemLevel").set,
+                    },
+                },
+            },
+
+            recommendations = {
+                type = "group",
+                name = "Recommendations",
+                inline = true,
+                order = 3,
+                hidden = advisorDisabled,
+                args = {
+                    recsList = {
+                        type = "description",
+                        order = 1,
+                        fontSize = "medium",
+                        name = function()
+                            local advisor = JustQuest.Core.GetModule("GearAdvisor")
+                            local ps = JustQuest.Core.GetModule("PawnScoring")
+                            if PawnGetItemData == nil then
+                                return "|cff808080Pawn is not installed — the advisor needs Pawn to score gear.|r"
+                            end
+                            local recs = advisor and advisor.GetRecommendations() or {}
+                            local count = 0
+                            for _ in pairs(recs) do count = count + 1 end
+                            if count == 0 then
+                                if ps and ps.HasScaleForSpec and not ps.HasScaleForSpec(GetSpecialization()) then
+                                    return "|cffff8800No active Pawn scale for this spec — set one up in Pawn (usually automatic). Run |r|cffffff00/jq gear check|r|cffff8800 for details.|r"
+                                end
+                                return "|cffaaaaaaNo upgrades in your bags for this spec right now.|r"
+                            end
+                            local s = string.format("|cffffcc00%d upgrade%s available:|r\n", count, count == 1 and "" or "s")
+                            for _, rec in pairs(recs) do
+                                local pctStr = (ps and ps.FormatUpgrade(rec.pct)) or "upgrade"
+                                -- No "replaces" for an empty slot (Pawn's no-baseline sentinel %).
+                                local replaces = (rec.existingLink and rec.pct and rec.pct < 99)
+                                    and ("  |cff888888replaces " .. rec.existingLink .. "|r") or ""
+                                local boe = rec.bound and "" or "  |cffff8800(BoE — equip by hand)|r"
+                                s = s .. "• " .. (rec.link or "?") .. "  |cff00ff00" .. pctStr .. "|r" .. replaces .. boe .. "\n"
+                            end
+                            return s
+                        end,
+                    },
+                    equipUpgrades = {
+                        type = "execute",
+                        name = "Equip All",
+                        desc = "Equip every recommended upgrade now (out of combat). Bind-on-equip items will prompt for confirmation.",
+                        order = 2,
+                        func = function()
+                            local advisor = JustQuest.Core.GetModule("GearAdvisor")
+                            if advisor and advisor.EquipAll then advisor.EquipAll(true) end
+                        end,
+                    },
+                    rescan = {
+                        type = "execute",
+                        name = "Rescan Bags",
+                        order = 3,
+                        func = function()
+                            local advisor = JustQuest.Core.GetModule("GearAdvisor")
+                            if advisor and advisor.RescanNow then advisor.RescanNow() end
+                        end,
+                    },
+                    dismissAll = {
+                        type = "execute",
+                        name = "Dismiss (until reload)",
+                        desc = "Ignore the current suggestions until you reload.",
+                        order = 4,
+                        func = function()
+                            local advisor = JustQuest.Core.GetModule("GearAdvisor")
+                            if advisor and advisor.DismissAll then advisor.DismissAll() end
+                        end,
+                    },
+                },
+            },
+
+            neverList = {
+                type = "group",
+                name = "Never-Recommend List",
+                inline = true,
+                order = 4,
+                args = {
+                    ignoredList = {
+                        type = "description",
+                        order = 1,
+                        fontSize = "small",
+                        name = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            local list = config and config.Get("gearSwap", "ignoreItems") or {}
+                            local names, n = {}, 0
+                            for _, v in pairs(list) do
+                                n = n + 1
+                                if type(v) == "string" then names[#names + 1] = v end
+                            end
+                            if n == 0 then
+                                return "|cffaaaaaaItems you choose \"Never\" on appear here.|r"
+                            end
+                            if #names > 0 then
+                                return "|cff888888Never recommending: " .. table.concat(names, ", ") .. "|r"
+                            end
+                            return "|cff888888Never recommending " .. n .. " item(s).|r"
+                        end,
+                    },
+                    clearIgnored = {
+                        type = "execute",
+                        name = "Clear Never List",
+                        desc = "Start recommending items you marked \"Never\" again.",
+                        order = 2,
+                        disabled = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            local list = config and config.Get("gearSwap", "ignoreItems") or {}
+                            return next(list) == nil
+                        end,
+                        func = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            if config then config.Set("gearSwap", "ignoreItems", {}) end
+                            local advisor = JustQuest.Core.GetModule("GearAdvisor")
+                            if advisor and advisor.RescanNow then advisor.RescanNow() end
+                            if ACR then ACR:NotifyChange("JustQuest") end
+                        end,
+                    },
+                },
+            },
+        },
+    }
+end
+
 local function CreateQuestOptions()
     return {
-        type = "group", 
+        type = "group",
         name = "Quests",
         order = 2,
         args = {
@@ -699,13 +1001,35 @@ local function CreateContainerOptions()
                         get = CreateAccessor("containers", "throttleDelay").get,
                         set = CreateAccessor("containers", "throttleDelay").set,
                     },
-                    useDatabaseFallback = {
-                        type = "toggle",
-                        name = "Use Built-In Database (Optional)",
-                        desc = "Use the built-in safe-container database as fallback for unlisted items.",
+                    mode = {
+                        type = "select",
+                        name = "Auto-Open",
+                        desc = "Which containers to auto-open. Your blacklist always overrides.",
                         order = 3,
-                        get = CreateAccessor("containers", "useDatabaseFallback").get,
-                        set = CreateAccessor("containers", "useDatabaseFallback").set,
+                        values = {
+                            list = "My list only",
+                            safe = "Safe containers (clams, chests, coin sacks)",
+                            all  = "Everything openable (incl. lockboxes)",
+                        },
+                        sorting = { "list", "safe", "all" },
+                        get = CreateAccessor("containers", "mode").get,
+                        set = CreateAccessor("containers", "mode").set,
+                    },
+                    rogueAutoPick = {
+                        type = "toggle",
+                        name = "Auto-Pick Lockboxes (Rogue)",
+                        desc = "Rogues: cast Pick Lock on pickable lockboxes, then open them. Only applies in \"Everything openable\" mode.",
+                        order = 4,
+                        hidden = function()
+                            local _, class = UnitClass("player")
+                            return class ~= "ROGUE"
+                        end,
+                        disabled = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            return not (config and config.Get("containers", "mode") == "all")
+                        end,
+                        get = CreateAccessor("containers", "rogueAutoPick").get,
+                        set = CreateAccessor("containers", "rogueAutoPick").set,
                     },
                 }
             },
@@ -995,7 +1319,9 @@ local function BuildOptionsTable()
         name = "JustQuest",
         args = {
             general = CreateGeneralOptions(),
-            quests = CreateQuestOptions(), 
+            gear = CreateGearOptions(),
+            delves = CreateDelveOptions(),
+            quests = CreateQuestOptions(),
             gossip = CreateGossipOptions(),
             containers = CreateContainerOptions(),
             advanced = CreateAdvancedOptions(),
@@ -1035,6 +1361,7 @@ local function EnsureRegistered()
         uiCache.blizzFrames["JustQuest-General"] = ACD:AddToBlizOptions("JustQuest", "General", "JustQuest", "general")
         uiCache.blizzFrames["JustQuest-Quests"] = ACD:AddToBlizOptions("JustQuest", "Quests", "JustQuest", "quests")
         uiCache.blizzFrames["JustQuest-Gossip"] = ACD:AddToBlizOptions("JustQuest", "NPCs", "JustQuest", "gossip")
+        uiCache.blizzFrames["JustQuest-Gear"] = ACD:AddToBlizOptions("JustQuest", "Gear", "JustQuest", "gear")
         uiCache.blizzFrames["JustQuest-Containers"] = ACD:AddToBlizOptions("JustQuest", "Containers", "JustQuest", "containers")
         uiCache.blizzFrames["JustQuest-Advanced"] = ACD:AddToBlizOptions("JustQuest", "Advanced", "JustQuest", "advanced")
 

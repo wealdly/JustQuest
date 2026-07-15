@@ -631,28 +631,37 @@ function QuestEngine.OnQuestLogUpdate()
     for i = 1, numPopups do
         local questID, popupType = GetAutoQuestPopUp(i)
         if questID then
-            local shouldProcess = safetyEngine and safetyEngine.ShouldAcceptQuest(questID)
-            
+            -- COMPLETE popups turn in an already-accepted quest: gate on the blocklist
+            -- only (ShouldCompleteQuest), NOT accept-type policy. OFFER popups are
+            -- accepts, so they keep the full ShouldAcceptQuest gate.
+            local shouldProcess
+            if popupType == "COMPLETE" then
+                shouldProcess = not safetyEngine or safetyEngine.ShouldCompleteQuest(questID)
+            else
+                shouldProcess = safetyEngine and safetyEngine.ShouldAcceptQuest(questID)
+            end
+
             if services.Debug then
                 local questName = "Quest " .. questID
                 local gameData = GetGameData()
                 if gameData then
                     questName = gameData.GetQuestName and gameData.GetQuestName(questID) or questName
                 end
-                services.Debug("Quest", string.format("Popup %s (%s): %s", 
-                    questName, popupType or "UNKNOWN", shouldProcess and "ACCEPT" or "SKIP"))
+                services.Debug("Quest", string.format("Popup %s (%s): %s",
+                    questName, popupType or "UNKNOWN", shouldProcess and "PROCESS" or "SKIP"))
             end
-            
+
             if shouldProcess then
-                if popupType == "COMPLETE" then 
+                if popupType == "COMPLETE" then
                     services.SafeCall(ShowQuestComplete, questID)
-                elseif popupType == "OFFER" then 
+                elseif popupType == "OFFER" then
                     services.SafeCall(ShowQuestOffer, questID)
                 end
             end
+
+            -- Only clear a popup we actually had (questID nil = no popup at this index).
+            services.SafeCall(RemoveAutoQuestPopUp, questID)
         end
-        
-        services.SafeCall(RemoveAutoQuestPopUp, questID)
     end
 end
 
@@ -779,7 +788,43 @@ function QuestEngine.OnQuestProgress()
         isComplete = IsQuestCompletable()
     end
     
-    if isComplete then 
+    if isComplete then
+        -- Guard: required items — halt unless ALL are quest-class items (classID 12).
+        -- Quest items (pelts, vials, stolen plans) are expected consumables. Trade
+        -- materials, crafted items, or uncached items are not safe to auto-consume.
+        -- MUST run before the currency prompt below: the popup's Spend path calls
+        -- CompleteQuest directly, so an unsafe item has to halt here or it would be
+        -- consumed silently after the player only approved the currency.
+        local numItems = GetNumQuestItems and GetNumQuestItems() or 0
+        if numItems > 0 then
+            local IC = JustQuest.Constants.ITEM_CLASS
+            for i = 1, numItems do
+                local hidden = IsQuestItemHidden and IsQuestItemHidden(i) or 0
+                if hidden == 0 then  -- only inspect visible required items
+                    local itemLink = GetQuestItemLink and GetQuestItemLink("required", i)
+                    if itemLink then
+                        local classID = select(12, GetItemInfo(itemLink))
+                        if classID == nil or classID ~= IC.QUESTITEM then
+                            if services.Debug then
+                                services.Debug("Quest", "Quest requires non-quest item (classID=" .. tostring(classID) .. ") — halting for manual confirmation")
+                            end
+                            if services.OutputHalt then services.OutputHalt("quest_requires_trade_items") end
+                            if safetyEngine then safetyEngine.EndProcessing("quest_requires_trade_items") end
+                            return
+                        end
+                    else
+                        -- Item link not in client cache; cannot verify — halt to be safe.
+                        if services.Debug then
+                            services.Debug("Quest", "Required item link not cached — halting for manual confirmation")
+                        end
+                        if services.OutputHalt then services.OutputHalt("quest_requires_uncached_items") end
+                        if safetyEngine then safetyEngine.EndProcessing("quest_requires_uncached_items") end
+                        return
+                    end
+                end
+            end
+        end
+
         -- Guard: required currencies — check whitelist, then prompt if not already allowed.
         -- Currencies (Flightstones, Resonance Crystals, Honor, etc.) are consumed by CompleteQuest().
         local numCurrencies = GetNumQuestCurrencies and GetNumQuestCurrencies() or 0
@@ -838,39 +883,6 @@ function QuestEngine.OnQuestProgress()
             end
         end
 
-        -- Guard: required items — halt unless ALL are quest-class items (classID 12).
-        -- Quest items (pelts, vials, stolen plans) are expected consumables.
-        -- Trade materials, crafted items, or uncached items are not safe to auto-consume.
-        local numItems = GetNumQuestItems and GetNumQuestItems() or 0
-        if numItems > 0 then
-            local IC = JustQuest.Constants.ITEM_CLASS
-            for i = 1, numItems do
-                local hidden = IsQuestItemHidden and IsQuestItemHidden(i) or 0
-                if hidden == 0 then  -- only inspect visible required items
-                    local itemLink = GetQuestItemLink and GetQuestItemLink("required", i)
-                    if itemLink then
-                        local classID = select(12, GetItemInfo(itemLink))
-                        if classID == nil or classID ~= IC.QUESTITEM then
-                            if services.Debug then
-                                services.Debug("Quest", "Quest requires non-quest item (classID=" .. tostring(classID) .. ") — halting for manual confirmation")
-                            end
-                            if services.OutputHalt then services.OutputHalt("quest_requires_trade_items") end
-                            if safetyEngine then safetyEngine.EndProcessing("quest_requires_trade_items") end
-                            return
-                        end
-                    else
-                        -- Item link not in client cache; cannot verify — halt to be safe.
-                        if services.Debug then
-                            services.Debug("Quest", "Required item link not cached — halting for manual confirmation")
-                        end
-                        if services.OutputHalt then services.OutputHalt("quest_requires_uncached_items") end
-                        if safetyEngine then safetyEngine.EndProcessing("quest_requires_uncached_items") end
-                        return
-                    end
-                end
-            end
-        end
-
         -- Ensure BUSY state before calling CompleteQuest.
         -- Prevents repumps/DispatchContent from starting new processing mid-turn-in.
         if safetyEngine then
@@ -926,7 +938,9 @@ function QuestEngine.OnQuestComplete()
     -- if two quests are turned in rapidly (e.g., multi-turnin NPC).
     local questID = GetQuestID and GetQuestID() or 0
     local now = GetTime()
-    if QuestEngine._lastQuestCompleteID == questID and
+    -- Only debounce on a real (nonzero) ID: two different turn-ins that both report
+    -- questID 0 within the window must not be treated as the same quest.
+    if questID ~= 0 and QuestEngine._lastQuestCompleteID == questID and
        QuestEngine._lastQuestCompleteTime and (now - QuestEngine._lastQuestCompleteTime) < 0.5 then
         if services and services.Debug then
             services.Debug("Quest", "OnQuestComplete: Skipped duplicate (debounced, questID=" .. tostring(questID) .. ")")
@@ -961,9 +975,12 @@ function QuestEngine.OnQuestComplete()
         rewardEngine.ProcessQuestReward()
         -- RewardEngine manages state reset after processing
     else
-        -- Fallback: no reward engine, just select reward
+        -- Fallback: no reward engine, just select reward. Release BUSY here since
+        -- nothing else owns the reset on this path (QUEST_TURNED_IN normally does,
+        -- but don't rely on it if GetQuestReward silently fails).
         local numChoices = GetNumQuestChoices and GetNumQuestChoices() or 0
         services.SafeCall(GetQuestReward, numChoices == 1 and 1 or nil)
+        if safetyEngine then safetyEngine.EndProcessing("quest_turned_in") end
     end
 end
 
@@ -971,9 +988,11 @@ function QuestEngine.OnQuestAutoComplete(questID)
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
     
+    -- QUEST_AUTOCOMPLETE is a turn-in of an already-accepted quest — gate it on the
+    -- completion check (blocklist only), not accept-type policy.
     if services and services.CanAutomate() and
        type(questID) == "number" and
-       safetyEngine and safetyEngine.ShouldAcceptQuest(questID) then
+       (not safetyEngine or safetyEngine.ShouldCompleteQuest(questID)) then
         services.SafeCall(ShowQuestComplete, questID)
     end
 end
@@ -1043,16 +1062,18 @@ function QuestEngine.OnQuestDataLoadResult(questID, success)
     -- QUEST_DATA_LOAD_RESULT fires frequently for all quests in the log —
     -- only act if gossip is open and data may affect available quest visibility.
     local services = GetServices()
-    
-    if not services or not services.CanAutomate() then
-        return
-    end
+    if not services then return end
 
-    -- Only relevant if gossip frame is open and we might need the data
+    -- This event fires for every quest in the log, but we only care while gossip is
+    -- open — check that cheap condition before the fuller CanAutomate() gate.
     if not (GossipFrame and GossipFrame:IsShown()) then
         return
     end
-    
+
+    if not services.CanAutomate() then
+        return
+    end
+
     if not success then
         return
     end

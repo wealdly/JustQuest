@@ -130,6 +130,12 @@ local EVENT_DISPATCH = {
     
     CINEMATIC_START = {"Core", "OnCinematicStart"},
     PLAY_MOVIE = {"Core", "OnPlayMovie"},
+
+    -- Vehicle / possess / override-bar control states: stand automation down
+    -- immediately so nothing interacts with the controlling NPC mid-transition.
+    UNIT_ENTERED_VEHICLE = {"Core", "OnControlStateEnter"},
+    UPDATE_OVERRIDE_ACTIONBAR = {"Core", "OnControlStateEnter"},
+    UPDATE_POSSESS_BAR = {"Core", "OnControlStateEnter"},
 }
 
 -- ============================================================
@@ -162,7 +168,12 @@ local function OnQuestAccepted(questID)
     if gossipEngine and gossipEngine.ResetChainState then
         gossipEngine.ResetChainState()
     end
-    
+
+    -- Chain summary: a quest was accepted (no-op unless the option is on).
+    if services and services.NoteAutomation then
+        services.NoteAutomation("accepted")
+    end
+
     if safety and not safety.IsBusy() then
         if QuestFrame and QuestFrame:IsShown() then
             if services and services.SafeCall then
@@ -194,43 +205,55 @@ local function OnQuestTurnedIn()
         rewardEngine.ResetProcessingFlag()
     end
 
+    -- Turn-in is real progress: refresh the gossip auto-select budget so a hub that
+    -- routes each turn-in through gossip navigation doesn't exhaust the chain-depth
+    -- cap and stop mid-hub (accept does the same via OnQuestAccepted).
+    local gossipEngine = JustQuest.Core.GetModule("GossipEngine")
+    if gossipEngine and gossipEngine.ResetChainState then
+        gossipEngine.ResetChainState()
+    end
+
+    -- Chain summary: a quest was turned in (no-op unless the option is on).
+    local services = JustQuest.Core.GetModule("Services")
+    if services and services.NoteAutomation then
+        services.NoteAutomation("turnedIn")
+    end
+
     local safety = JustQuest.Core.GetModule("SafetyEngine")
     if safety then
         safety.EndProcessing("quest_turned_in", true)
     end
 end
 
-local function HandleStaticPopup(popupType)
-    if StaticPopup_Visible and StaticPopup_Visible(popupType) then
-        for i = 1, 4 do
-            local popup = _G["StaticPopup" .. i]
-            if popup and popup:IsShown() and popup.which == popupType then
-                StaticPopup_OnClick(popup, 1)
-                break
-            end
-        end
-    end
-end
-
-local function SkipMedia(frame, cancelFunc)
+-- CINEMATIC_START passes canBeCancelled as its first arg; Blizzard stores it as
+-- CinematicFrame.isRealCinematic ("if it isn't real, it's a vehicle cinematic").
+-- CinematicFrame_CancelCinematic() branches on it: real -> StopCinematic, a
+-- cancellable scene -> CancelScene, otherwise -> VehicleExit(). That last branch is
+-- the trap: a vehicle cinematic (quest possess/vehicle boarding like "torture the
+-- suspect") would be force-skipped by ejecting the player mid-board, desyncing them
+-- into a disconnect. So only skip a real cinematic or a cancellable in-game scene;
+-- calling the same function Blizzard's own skip-confirm calls makes it instant and
+-- seamless (no popup dance needed).
+local function OnCinematicStart(canBeCancelled)
     local config = JustQuest.Core.GetModule("Config")
     if not (config and config.Get(nil, "skipCinematics")) then return end
-    if not (frame and frame:IsShown()) then return end
-    cancelFunc()
-    local services = JustQuest.Core.GetModule("Services")
-    if services and services.ScheduleOnce then
-        services.ScheduleOnce("cancel_cinematic", 0, function()
-            HandleStaticPopup("CONFIRM_CANCEL_CINEMATIC")
-        end)
-    end
-end
 
-local function OnCinematicStart()
-    SkipMedia(CinematicFrame, CinematicFrame_CancelCinematic)
+    local skippable = canBeCancelled
+        or (IsInCinematicScene and IsInCinematicScene() and CanCancelScene and CanCancelScene())
+    if skippable and CinematicFrame_CancelCinematic then
+        CinematicFrame_CancelCinematic()
+    end
 end
 
 local function OnPlayMovie()
-    SkipMedia(MovieFrame, function() MovieFrame:StopMovie() end)
+    local config = JustQuest.Core.GetModule("Config")
+    if not (config and config.Get(nil, "skipCinematics")) then return end
+
+    -- FinishMovie() is exactly what the movie's skip-confirm button calls (stop +
+    -- hide + report finished). Pre-rendered movies are never vehicle transitions.
+    if MovieFrame and MovieFrame.FinishMovie then
+        MovieFrame:FinishMovie()
+    end
 end
 
 -- State recovery for teleportation and UI state changes
@@ -336,6 +359,32 @@ local function OnPlayerTargetChanged()
     end
 end
 
+-- Vehicle boarding, possess, or an override action bar (e.g. a "torture the
+-- suspect" quest bar) means the player is now controlling something else.
+-- Interacting with the source NPC or its gossip while the server is still
+-- transitioning desyncs the client and force-disconnects, so cancel every
+-- pending automation action and go idle. Automation resumes on the next real
+-- quest/gossip event once the control state ends.
+local function OnControlStateEnter(unit)
+    -- UNIT_ENTERED_VEHICLE passes a unit; override/possess-bar events pass none.
+    if unit ~= nil and unit ~= "player" then return end
+
+    local services = JustQuest.Core.GetModule("Services")
+    if services then
+        if services.CancelAutomationTimers then services.CancelAutomationTimers() end
+        if services.RestoreAutomationFrames then services.RestoreAutomationFrames() end
+    end
+
+    local safety = JustQuest.Core.GetModule("SafetyEngine")
+    if safety then
+        if safety.IsBusy and safety.IsBusy() and safety.EndProcessing then
+            safety.EndProcessing("control_state_enter")
+        elseif safety.SetState then
+            safety.SetState("IDLE", "control_state_enter")
+        end
+    end
+end
+
 -- Core method dispatch table
 local CORE_METHODS = {
     PumpQuestCheck = PumpQuestCheck,
@@ -346,6 +395,7 @@ local CORE_METHODS = {
     OnTeleportation = OnTeleportation,
     OnModifierStateChanged = OnModifierStateChanged,
     OnPlayerTargetChanged = OnPlayerTargetChanged,
+    OnControlStateEnter = OnControlStateEnter,
 }
 
 -- ============================================================
@@ -377,7 +427,7 @@ local function ShouldProcessEvent(event)
         return false
     end
     if UnitIsDeadOrGhost("player") then return false end
-    if UnitHasVehicleUI and UnitHasVehicleUI("player") then return false end
+    if services.InSpecialControlState and services.InSpecialControlState() then return false end
     if not config.Get("quest", "enabled") or not config.Get("gossip", "enabled") then return false end
 
     -- Single-pass frame check (not duplicated via CanAutomate)

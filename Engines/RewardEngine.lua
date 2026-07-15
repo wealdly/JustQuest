@@ -9,6 +9,7 @@ local GetServices     = JustQuest.Core.ModuleGetter("Services")
 local GetConfig       = JustQuest.Core.ModuleGetter("Config")
 local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
 local GetGameData     = JustQuest.Core.ModuleGetter("GameData")
+local GetPawnScoring  = JustQuest.Core.ModuleGetter("PawnScoring")
 
 -- ============================================================
 -- Reward Processing State
@@ -121,12 +122,17 @@ function RewardEngine.ProcessQuestReward()
             return
         end
         
-        -- Max retries exhausted: proceed with whatever data we have
+        -- Max retries exhausted and item data still incomplete. Auto-selecting now
+        -- would read nil quality/value for the uncached choices and can silently pick
+        -- the wrong reward — so surface it for manual selection instead of guessing.
+        rewardRetryCount = 0
         if services.Debug then
             services.Debug("Rewards", string.format(
-                "Item data retry exhausted (%d/%d cached) - proceeding with partial data",
+                "Item data retry exhausted (%d/%d cached) - halting for manual selection",
                 loadedCount, numChoices))
         end
+        RewardEngine.HaltForManualSelection("reward_items_not_loaded")
+        return
     end
     rewardRetryCount = 0  -- Reset for next quest
     
@@ -360,137 +366,12 @@ end
 -- Equipment Comparison
 -- ============================================================
 
--- Returns the spec index (1–4) that should drive Pawn scale selection.
--- Honours the loot specialization override (right-click portrait → Loot Specialization):
--- if the player has pinned a different spec for loot, we respect that preference so
--- tank/healer loot scales are used even while playing a DPS spec.
--- GetLootSpecialization() returns a global spec ID; Pawn stores the 1-4 index that
--- GetSpecialization() returns, so we convert by probing GetSpecializationInfo(i).
-local function GetEffectiveSpecIndex()
-    local config = JustQuest.Core.GetModule("Config")
-    local useLootSpec = not config or config.Get("quest", "pawnUseLootSpec") ~= false
-    if useLootSpec then
-        local lootSpecID = GetLootSpecialization and GetLootSpecialization() or 0
-        if lootSpecID and lootSpecID > 0 then
-            -- WoW has at most 4 specs per class; iterate until we find the matching index.
-            for i = 1, 4 do
-                local id = GetSpecializationInfo and GetSpecializationInfo(i)
-                if not id then break end
-                if id == lootSpecID then return i end
-            end
-        end
-    end
-    -- Loot spec disabled, = 0 ("Current Specialization"), or conversion failed: use active spec.
-    return GetSpecialization and GetSpecialization() or nil
-end
-
--- Returns { isUpgrade=bool, pawnPercentUpgrade=number } when Pawn can give a definitive
--- result for the player's CURRENT spec, or nil to signal "fall back to ilvl comparison".
---
--- Scale selection priority:
---   1. Scales tagged to the player's current class+spec (Scale.ClassID + Scale.SpecID match)
---   2. Scales tagged to the player's class only (Scale.ClassID matches, no SpecID)
---   3. Untagged/generic user scales (no ClassID)
---
--- Scales for other classes or other specs are ignored entirely so a Holy Paladin
--- scale does not influence a Retribution Paladin's reward pick.
+-- Spec-aware Pawn scoring lives in the shared PawnScoring module so reward selection
+-- and the Gear Advisor score items identically. This wrapper keeps the existing call
+-- site and the Pawn-absent fallback (nil -> item level) semantics intact.
 local function GetPawnUpgradeForCurrentSpec(itemLink)
-    if not (PawnGetItemData and PawnIsItemAnUpgrade and PawnIsScaleVisible
-            and PawnCommon and PawnCommon.Scales) then
-        return nil
-    end
-
-    -- Respect the user's option to disable Pawn scoring.
-    local config = JustQuest.Core.GetModule("Config")
-    if config and config.Get("quest", "usePawnScoring") == false then
-        return nil
-    end
-
-    local pawnData = PawnGetItemData(itemLink)
-    if not pawnData then return nil end  -- item not in WoW/Pawn cache yet
-
-    local upgradeTable, _, bestItemTable, secondBestTable = PawnIsItemAnUpgrade(pawnData)
-
-    -- Player identity for scale filtering (loot spec overrides active spec)
-    local _, _, playerClassID = UnitClass("player")
-    local playerSpecIndex    = GetEffectiveSpecIndex()
-
-    -- Classify each visible scale into one of three buckets:
-    --   specScales   — tagged to this class AND this spec (highest priority)
-    --   classScales  — tagged to this class, no spec restriction
-    --   genericScales — no class/spec tag (user-created)
-    -- Scales for a different class or a different spec of this class are skipped.
-    local specScales    = {}
-    local classScales   = {}
-    local genericScales = {}
-
-    for scaleName, scale in pairs(PawnCommon.Scales) do
-        if PawnIsScaleVisible(scaleName) then
-            if scale.ClassID ~= nil then
-                if scale.ClassID == playerClassID then
-                    if scale.SpecID ~= nil then
-                        if scale.SpecID == playerSpecIndex then
-                            specScales[scaleName] = true
-                        end
-                        -- else: same class, different spec — skip
-                    else
-                        classScales[scaleName] = true
-                    end
-                end
-                -- else: different class — skip
-            else
-                genericScales[scaleName] = true
-            end
-        end
-    end
-
-    -- Pick the tightest matching set that has at least one scale
-    local relevant
-    if next(specScales)  then relevant = specScales
-    elseif next(classScales) then relevant = classScales
-    else relevant = genericScales
-    end
-    if not next(relevant) then return nil end  -- no applicable scales at all
-
-    -- Walk the three result tables Pawn returned and collect hits from relevant scales
-    local isUpgrade        = false
-    local pawnPercentUpgrade = 0
-    local hadResult        = false
-
-    if upgradeTable then
-        for _, entry in ipairs(upgradeTable) do
-            if relevant[entry.ScaleName] then
-                hadResult  = true
-                isUpgrade  = true
-                local pct  = entry.PercentUpgrade or 0
-                if pct > pawnPercentUpgrade then
-                    pawnPercentUpgrade = pct
-                end
-            end
-        end
-    end
-
-    -- bestItemTable / secondBestTable mean "this scale ran and the item is NOT an upgrade".
-    -- Use separate blocks, not ipairs{}, to avoid ipairs stopping at the first nil entry.
-    if bestItemTable then
-        for scaleName in pairs(bestItemTable) do
-            if relevant[scaleName] then
-                hadResult = true
-                -- isUpgrade intentionally stays false unless upgradeTable already set it
-            end
-        end
-    end
-    if secondBestTable then
-        for scaleName in pairs(secondBestTable) do
-            if relevant[scaleName] then
-                hadResult = true
-            end
-        end
-    end
-
-    if not hadResult then return nil end  -- relevant scales didn't produce any result
-
-    return { isUpgrade = isUpgrade, pawnPercentUpgrade = pawnPercentUpgrade }
+    local ps = GetPawnScoring()
+    return ps and ps.ScoreItem(itemLink)
 end
 
 function RewardEngine.CompareWithEquipped(rewardInfo)
