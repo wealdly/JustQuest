@@ -38,7 +38,26 @@ local state = {
     failedGossipNPC = nil,
     failedGossipTime = 0,
     failedGossipOptions = 0,
+    autoSelected = false,
 }
+
+-- The loop guards, as one unit: chain depth, the per-option repeat history, and the
+-- failed-menu fingerprint. They only bound a walk if they outlive a single menu, so
+-- clear them ONLY where a conversation genuinely ends (target change) or real progress
+-- happened (quest accept/turn-in resets depth via ResetChainState). See OnGossipClosed
+-- for why a gossip close is not, on its own, either of those.
+local function ResetLoopGuards(safetyEngine)
+    state.chainDepth = 0
+    state.failedGossipNPC = nil
+    state.failedGossipTime = 0
+    state.failedGossipOptions = 0
+    state.autoSelected = false
+
+    safetyEngine = safetyEngine or GetSafetyEngine()
+    if safetyEngine and safetyEngine.ClearSelections then
+        safetyEngine.ClearSelections()
+    end
+end
 
 -- Check if we're in failed gossip cooldown for current NPC
 function GossipEngine.IsInFailedCooldown()
@@ -167,6 +186,8 @@ local function TrySelectSafeOption(option, safetyEngine, services)
     state.failedGossipNPC = nil
     state.failedGossipTime = 0
     state.failedGossipOptions = 0
+    -- Marks any gossip close that follows as server-driven, not player-driven.
+    state.autoSelected = true
     return true
 end
 
@@ -248,10 +269,10 @@ local function HandleGossip(skipPreChecks)
     end
 
     -- Chain-depth accounting (anti-loop) — every auto-selection counts toward the
-    -- cap. Reset only on real progress (NPC change, quest accept/turn-in, gossip
-    -- close), NOT on a time gap: a menu that re-shows after each successful select
-    -- with a round-trip slower than any decay window would reset the counter every
-    -- cycle and walk without bound (the slow-loop the player sees "sometimes").
+    -- cap. Reset only on real progress (NPC change, quest accept/turn-in), NOT on a
+    -- time gap and NOT on a bare gossip close: a menu that re-shows after each
+    -- successful select would otherwise reset the counter every cycle and walk without
+    -- bound (the slow-loop the player sees "sometimes").
     state.chainDepth = state.chainDepth + 1
     local validDepth, chainReason = safetyEngine.ValidateChainDepth(state.chainDepth)
     if not validDepth then
@@ -424,17 +445,24 @@ function GossipEngine.OnGossipClosed()
     end
 
     -- Gossip-specific state cleanup (always safe — gossip IS closed)
-    state.chainDepth = 0
     state.confirmationPending = false
     state.automationHalted = false
     state.expectedGUID = nil
-    state.failedGossipNPC = nil
-    state.failedGossipTime = 0
-    state.failedGossipOptions = 0
 
     local safetyEngine = GetSafetyEngine()
-    if safetyEngine and safetyEngine.ClearSelections then
-        safetyEngine.ClearSelections()
+
+    -- A close that follows OUR OWN auto-selection is the server tearing down one step
+    -- of a conversation it is about to re-show — not the player leaving. The loop
+    -- guards have to survive it: clearing them here is what let a menu that re-shows
+    -- after every selection wipe its own chain-depth and repeat history every cycle and
+    -- walk without bound (the loop the player sees). The repeat guard then blocks the
+    -- option on the re-show and the menu surfaces, as intended.
+    -- A close with NO auto-selection behind it is a real end (player escaped, walked
+    -- off, or we left the menu for manual) — reset, so the next conversation is fresh.
+    if state.autoSelected then
+        state.autoSelected = false
+    else
+        ResetLoopGuards(safetyEngine)
     end
 
     -- DON'T reset state or workflow if BUSY — a quest was likely selected from
@@ -467,13 +495,15 @@ function GossipEngine.OnTargetChanged()
         services.RestoreAutomationFrames()
     end
 
-    state.chainDepth = 0
     state.confirmationPending = false
     state.automationHalted = false
     state.expectedGUID = nil
-    state.failedGossipNPC = nil
-    state.failedGossipTime = 0
-    state.failedGossipOptions = 0
+
+    -- A new target is the one unambiguous end of a conversation, so this is where the
+    -- loop guards clear (a gossip close is not — see OnGossipClosed). This must clear
+    -- the repeat history too, or the previous NPC's already-picked options stay
+    -- off-limits on the next one.
+    ResetLoopGuards()
 
     -- New target: drop any pending automation timers from the previous NPC.
     if services and services.CancelAutomationTimers then
@@ -507,6 +537,7 @@ function GossipEngine.GetStateInfo()
         automationHalted = state.automationHalted,
         lastShowTime = state.lastShowTime,
         expectedGUID = state.expectedGUID,
+        autoSelected = state.autoSelected,
     }
 end
 
