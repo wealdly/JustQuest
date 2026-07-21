@@ -76,10 +76,14 @@ local function IsInDelve()
     if C_DelvesUI and C_DelvesUI.HasActiveDelve then
         local ok, _, _, _, mapID = pcall(UnitPosition, "player")
         if ok and mapID then
+            -- Only a POSITIVE answer commits. UnitPosition's instanceID is not
+            -- necessarily the uiMapID this API wants, so a mismatch returns a clean
+            -- false rather than an error — letting the cheapest source veto the two
+            -- more reliable ones below and silently disable the feature in a delve.
             local ok2, active = pcall(C_DelvesUI.HasActiveDelve, mapID)
-            if ok2 then
-                delveCache = active and true or false
-                return delveCache
+            if ok2 and active then
+                delveCache = true
+                return true
             end
         end
     end

@@ -68,6 +68,7 @@ local AUTOMATION_TIMERS = {
     "reward_data_retry", "reward_select_fallback",
     "state_recovery_resume",
     "legacy_api_poll",
+    "automation_indicator_show",
 }
 
 function Services.CancelAutomationTimers()
@@ -194,6 +195,7 @@ local HALT_REASONS = {
     ["expensive_quest_requires_payment"] = "Quest turn-in costs gold",
     ["multiple_significant_rewards"]  = "Multiple significant rewards — manual selection required",
     ["reward_items_not_loaded"]       = "Reward items haven't finished loading",
+    ["no_comparable_reward_value"]    = "Rewards can't be compared by value — pick one",
 }
 
 function Services.OutputHalt(reason, extraInfo)
@@ -359,6 +361,11 @@ end
 local function FastModeSuppressFrame(frame)
     local config = JustQuest.Core.GetModule("Config")
     if not (config and config.Get(nil, "fastMode")) then return end
+    -- These OnShow hooks are installed once and live forever, so they must honour the
+    -- same enable gate as everything else. With the addon disabled, no event handler
+    -- runs — nothing could un-hide what this hid, leaving a shown-but-invisible frame
+    -- clearable only by walking out of range.
+    if not Services.IsAutomationEnabled() then return end
     if IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown() then return end
     if Services.HasInterferingFrame() then return end
 
@@ -583,13 +590,16 @@ function Services.CanAutomate()
     return true
 end
 
--- Container/reward gate — only blocks on bank/void storage (risky bag manipulation)
+-- Container/reward gate. Auto-open is driven by BAG_UPDATE_DELAYED, which also fires for
+-- a mail attachment, a vendor purchase and a completed trade — item movement, not looting,
+-- and opening a container mid-transaction is never what the player meant.
+--
+-- Deliberately the SAME list the rest of automation uses rather than a hand-kept subset:
+-- with two lists, adding a frame to INTERFERING_FRAMES (the obvious place, and where the
+-- gossip path points readers) would silently do nothing here.
 function Services.CanAutomateContainers()
     if not Services.CanAutomateBase() then return false end
-    if BankFrame and BankFrame:IsShown() then return false end
-    if GuildBankFrame and GuildBankFrame:IsShown() then return false end
-    if VoidStorageFrame and VoidStorageFrame:IsShown() then return false end
-    return true
+    return not Services.HasInterferingFrame()
 end
 
 Services.ValidateAutomationPreconditions = Services.CanAutomateContainers
@@ -677,6 +687,10 @@ function Services.HasAnyActionableContent()
 end
 
 -- Shared routing callback — routes to correct engine based on content type
+-- Deliberately NOT in Constants.TIMING: everything there is scaled by GetTiming, which
+-- halves in fast mode — exactly the mode this brake exists to protect.
+local FLAVOR_CLOSE_THROTTLE = 1.0
+
 local function DispatchContent(reason)
     -- Use CanAutomateBase (not CanAutomate) to avoid noisy "interfering frame" messages
     -- during background repumps (e.g. MerchantFrame opening after quest turn-in)
@@ -703,11 +717,18 @@ local function DispatchContent(reason)
         -- is pure flavor text. It was hidden on show, so close it instead of leaving
         -- an invisible window lingering. A held modifier bails above at
         -- CanAutomateBase, leaving the flavor visible to read.
+        -- Rate-limited: closing a menu the server immediately re-sends is a close/re-open
+        -- cycle that nothing else brakes — the repeat guard only covers option
+        -- SELECTION, so a flavor page with no options at all has no other stopping
+        -- condition. One close per second per interaction is plenty for tidying up, and
+        -- caps the thrash if the server disagrees with us about the menu being over.
         local config = JustQuest.Core.GetModule("Config")
         if config and config.Get(nil, "fastMode")
            and GossipFrame and GossipFrame:IsShown()
-           and C_GossipInfo and C_GossipInfo.CloseGossip then
+           and C_GossipInfo and C_GossipInfo.CloseGossip
+           and (GetTime() - (Services._lastFlavorClose or 0)) > FLAVOR_CLOSE_THROTTLE then
             Services.Debug("Services", "Fast mode: auto-closing flavor gossip (no options)")
+            Services._lastFlavorClose = GetTime()
             Services.SafeCall(C_GossipInfo.CloseGossip)
         end
         return false
@@ -728,13 +749,26 @@ local function DispatchContent(reason)
         if questEngine and questEngine.ProcessLegacyQuestGreeting then
             questEngine.ProcessLegacyQuestGreeting()
         end
-    elseif contentType == "modern" or contentType == "gossip" then
+        -- The legacy path runs its own data poll (PollForLegacyQuestData), so report
+        -- handled either way rather than stacking a second poll on top of it.
+        return true
+    end
+
+    if contentType == "modern" or contentType == "gossip" then
+        -- Report what the handler ACTUALLY did, not merely that we routed to it.
+        -- Returning true unconditionally here was the reason a follow-up quest often
+        -- needed a second click: the caller treats true as "handled, stop polling", so
+        -- the first re-check after a turn-in ended the poll even when it found nothing
+        -- to do — and the quest the server was still about to deliver arrived with
+        -- nobody listening. Every false below is a genuine "nothing done yet, look
+        -- again": still BUSY, quests filtered, or the list not yet updated.
+        --
         -- Always route through QuestEngine — it makes fresh API calls and has
         -- correct priority: complete quests > available quests > gossip delegation.
         if questEngine and questEngine.OnGossipShow then
-            questEngine.OnGossipShow()
+            return questEngine.OnGossipShow() and true or false
         elseif gossipEngine and gossipEngine.OnGossipShow then
-            gossipEngine.OnGossipShow(true)
+            return gossipEngine.OnGossipShow(true) and true or false
         end
     end
 
@@ -747,19 +781,42 @@ end
 -- returning false AND an NPC interaction frame is still open, the data simply hasn't
 -- landed yet — so re-check with backoff until it does or a short deadline passes.
 -- This turns each single-shot re-check into a bounded poll, so a lagging accept /
--- turn-in / gossip step that unlocks a new stage isn't dropped. (A menu that IS
--- present but left for the player still makes DispatchContent return true, so those
--- are not re-polled.) A newer event calls back through here and cancels the key,
--- pre-empting the chain; CancelAutomationTimers also stops it on teardown.
-local function ScheduleDispatch(key, delay, reason, deadline)
+-- turn-in / gossip step that unlocks a new stage isn't dropped. "Handled" means the
+-- handler actually did something — a pass that looked and found nothing keeps polling,
+-- because that is exactly the case where the server is still on its way.
+--
+-- A menu left for the player is re-checked too, and that is the case that actually runs
+-- to the deadline — so it early-outs on a content fingerprint. New server data always
+-- moves one of these three counts; that is the entire reason the poll exists. Without it
+-- every pass re-ran the full quest-list walk and cycled BUSY->IDLE, which is both wasted
+-- allocation and enough state churn to keep re-arming the automation indicator so it
+-- never survived long enough to appear.
+local function ContentFingerprint()
+    local active    = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetActiveQuests)
+    local available = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetAvailableQuests)
+    local options   = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
+    return string.format("%d:%d:%d",
+        type(active) == "table" and #active or -1,
+        type(available) == "table" and #available or -1,
+        type(options) == "table" and #options or -1)
+end
+
+-- A newer event calls back through here and cancels the key, pre-empting the chain;
+-- CancelAutomationTimers also stops it on teardown.
+local function ScheduleDispatch(key, delay, reason, deadline, lastPrint)
     Services.ScheduleOnce(key, delay, function()
-        if DispatchContent(reason) then return end
+        -- Unchanged content means the server has sent nothing new since the last look,
+        -- so the handler cannot reach a different decision than it just did.
+        local print_ = ContentFingerprint()
+        if print_ ~= lastPrint then
+            if DispatchContent(reason) then return end
+        end
         if not deadline or GetTime() >= deadline then return end
         if not Services.IsInteractionFrameOpen() then return end
 
         local maxDelay = JustQuest.Constants.TIMING.RE_PUMP_MAX_DELAY or 0.3
         local growth   = JustQuest.Constants.TIMING.RE_PUMP_GROWTH_FACTOR or 1.4
-        ScheduleDispatch(key, math.min((delay or 0.15) * growth, maxDelay), reason, deadline)
+        ScheduleDispatch(key, math.min((delay or 0.15) * growth, maxDelay), reason, deadline, print_)
     end)
 end
 

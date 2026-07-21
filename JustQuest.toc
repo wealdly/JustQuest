@@ -42,5 +42,6 @@ Engines\GearAdvisor.lua
 
 # User Interface
 Interface\ConfigUI.lua
+Interface\AutomationIndicator.lua
 Interface\GearToast.lua
 Interface\LFGQuickStart.lua

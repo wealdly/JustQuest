@@ -309,9 +309,53 @@ end
 -- Class and Profession Helpers
 -- ============================================================
 
+-- Surfaced tooltip lines for an item link, or nil when the data isn't available yet.
+-- The nil is meaningful: a caller that caches a verdict must not record one built from
+-- missing data. Every tooltip read goes through here so the surfacing rules — which have
+-- moved more than once — live in exactly one place.
+function GameData.TooltipLines(itemLink)
+    if not (itemLink and C_TooltipInfo and C_TooltipInfo.GetHyperlink) then return nil end
+
+    local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+    if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return nil end
+
+    -- Older shapes need the args surfaced before the fields are readable.
+    if TooltipUtil and TooltipUtil.SurfaceArgs then
+        pcall(TooltipUtil.SurfaceArgs, data)
+        for _, line in ipairs(data.lines) do pcall(TooltipUtil.SurfaceArgs, line) end
+    end
+
+    return data.lines
+end
+
+-- Everything that stops the player using an item. Required level is checked directly
+-- because it's certain and cheap; the rest — class, armour proficiency, faction,
+-- profession — comes from red tooltip text, which is the game's own verdict and needs no
+-- table maintained against it. Anything unexpected degrades to "no requirement failed",
+-- so a false "usable" is never worse than the behaviour this replaced.
+function GameData.ItemFailsARequirement(itemLink)
+    if not itemLink then return false end
+
+    local minLevel = select(5, C_Item.GetItemInfo(itemLink))
+    if minLevel and minLevel > (UnitLevel("player") or 0) then return true end
+
+    local lines = GameData.TooltipLines(itemLink)
+    if not lines then return false end
+
+    for _, line in ipairs(lines) do
+        local c = line.leftColor
+        -- RED_FONT_COLOR is (1, 0.125, 0.125); compare loosely rather than exactly.
+        if c and c.r and c.g and c.b and c.r > 0.9 and c.g < 0.2 and c.b < 0.2 then
+            return true
+        end
+    end
+    return false
+end
+
 function GameData.CanPlayerUseItem(itemLink)
     if not itemLink then return false end
-    
+    if GameData.ItemFailsARequirement(itemLink) then return false end
+
     local services = JustQuest.Core.GetModule("Services")
     return services and services.SafeCall(IsUsableItem, itemLink) or false
 end

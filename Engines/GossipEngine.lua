@@ -38,8 +38,25 @@ local state = {
     failedGossipNPC = nil,
     failedGossipTime = 0,
     failedGossipOptions = 0,
-    autoSelected = false,
+    -- When we last auto-selected an option. Doubles as the "is this still the same
+    -- conversation" signal for both the re-show and the close paths.
+    lastSelectTime = 0,
 }
+
+-- A server-driven menu re-show or close lands within a few tenths of a second of our own
+-- selection. Anything slower is a human coming back to the NPC, i.e. a NEW conversation.
+--
+-- Deliberately NOT in Constants.TIMING: everything there is scaled by GetTiming, which
+-- halves in fast mode — and this is not a delay we choose, it classifies observed server
+-- behaviour. Halving it would start misreading re-shows as new conversations.
+local RESHOW_WINDOW = 2.0
+
+-- The arithmetic behind "is this event still part of the conversation we were driving".
+-- Written once because the two callers guard it DIFFERENTLY, and when both spelled the
+-- subtraction inline the difference read as a copy-paste slip rather than a decision.
+local function IsServerContinuation()
+    return (GetTime() - (state.lastSelectTime or 0)) <= RESHOW_WINDOW
+end
 
 -- The loop guards, as one unit: chain depth, the per-option repeat history, and the
 -- failed-menu fingerprint. They only bound a walk if they outlive a single menu, so
@@ -51,7 +68,7 @@ local function ResetLoopGuards(safetyEngine)
     state.failedGossipNPC = nil
     state.failedGossipTime = 0
     state.failedGossipOptions = 0
-    state.autoSelected = false
+    state.lastSelectTime = 0
 
     safetyEngine = safetyEngine or GetSafetyEngine()
     if safetyEngine and safetyEngine.ClearSelections then
@@ -183,11 +200,17 @@ local function TrySelectSafeOption(option, safetyEngine, services)
     if safetyEngine.ShouldSkipRepeat(optionID) then return false end
     if safetyEngine.IsBlacklisted(option) then return false end
     if not SelectOption(option, safetyEngine, services) then return false end
+    -- Depth counts real steps only. A single server menu can reach HandleGossip twice —
+    -- the post-selection content check fires at ~0.15s, then the server's own GOSSIP_SHOW
+    -- schedules another pass — so counting entries spent the budget at 2x and halted a
+    -- short walk before it reached anything useful.
+    state.chainDepth = state.chainDepth + 1
     state.failedGossipNPC = nil
     state.failedGossipTime = 0
     state.failedGossipOptions = 0
-    -- Marks any gossip close that follows as server-driven, not player-driven.
-    state.autoSelected = true
+    -- Marks a close or re-show landing shortly after this as server-driven, not the
+    -- player leaving. Re-readable, unlike the consumable flag this replaced.
+    state.lastSelectTime = GetTime()
     return true
 end
 
@@ -269,12 +292,11 @@ local function HandleGossip(skipPreChecks)
     end
 
     -- Chain-depth accounting (anti-loop) — every auto-selection counts toward the
-    -- cap. Reset only on real progress (NPC change, quest accept/turn-in), NOT on a
-    -- time gap and NOT on a bare gossip close: a menu that re-shows after each
-    -- successful select would otherwise reset the counter every cycle and walk without
-    -- bound (the slow-loop the player sees "sometimes").
-    state.chainDepth = state.chainDepth + 1
-    local validDepth, chainReason = safetyEngine.ValidateChainDepth(state.chainDepth)
+    -- cap (incremented in TrySelectSafeOption, so only real steps count). Reset only on
+    -- real progress (NPC change, quest accept/turn-in), NOT on a time gap and NOT on a
+    -- bare gossip close: a menu that re-shows after each successful select would
+    -- otherwise reset the counter every cycle and walk without bound.
+    local validDepth, chainReason = safetyEngine.ValidateChainDepth(state.chainDepth + 1)
     if not validDepth then
         return halt(chainReason)
     end
@@ -325,10 +347,12 @@ local function HandleGossip(skipPreChecks)
         -- PRIORITY 3 (aggressive, default) — TRAVERSE: advance through gossip so
         -- quests buried behind dialog are reached without stopping the player on pure
         -- navigation. Two passes in ONE handling (no extra round-trip): first any
-        -- NON-service option — services (vendor/trainer/banker) lead away from quests
-        -- and open a blocking frame — then services, so a pure service NPC still
-        -- fires in the same tick when that's all there is. Safety is layered and
-        -- already enforced here:
+        -- NON-service option, then services, so a pure service NPC still fires in the
+        -- same tick when that's all there is. The order is not cosmetic: every service
+        -- target (Merchant/Taxi/Trainer/Bank…) is in INTERFERING_FRAMES, so taking a
+        -- service ENDS automation at this NPC for as long as the frame is open. It has
+        -- to come last, or quests buried behind conversation become unreachable.
+        -- Safety is layered and already enforced here:
         --   • a blacklisted keyword (teleport/portal/time/campaign-skip ship by
         --     default) anywhere in the menu stops the traverse before it starts — see
         --     hasUnsafeOption above — and TrySelectSafeOption blocks the option itself,
@@ -401,6 +425,27 @@ function GossipEngine.OnGossipShow(skipPreChecks)
 
     state.lastShowTime = GetTime()
 
+    -- A new menu means any confirm dialog resolved. Accepting a confirm produces a menu
+    -- re-show, not a cancel event, so nothing cleared this flag on the accept path — and
+    -- every later pass bailed on it, silently killing gossip automation at that NPC.
+    state.confirmationPending = false
+
+    -- A menu opening well after our last selection is a NEW conversation, even at the
+    -- same NPC — the guards must not carry over. Target change was the only reset, so
+    -- re-talking to an NPC you'd already auto-selected at (a flight master whose map you
+    -- closed, say) found its option still repeat-blocked, forever. That is why services
+    -- "were never reached": they had been reached once, and burned.
+    -- Guarded on a selection having actually happened: ResetLoopGuards zeroes the
+    -- timestamp, so an unguarded check re-fires on every pass and would wipe the
+    -- failed-menu fingerprint that a repump poll had just set — turning each cheap
+    -- re-check into a full re-walk of the menu.
+    -- The extra clause IS the difference from the close path below: with no selection yet
+    -- there is nothing to age out, and resetting anyway would wipe a fingerprint the
+    -- repump poll had just set.
+    if (state.lastSelectTime or 0) > 0 and not IsServerContinuation() then
+        ResetLoopGuards()
+    end
+
     local currentGUID = services.SafeCall(UnitGUID, "npc")
     if not state.expectedGUID or not SameNPC(state.expectedGUID, currentGUID) then
         state.expectedGUID = currentGUID
@@ -451,17 +496,21 @@ function GossipEngine.OnGossipClosed()
 
     local safetyEngine = GetSafetyEngine()
 
-    -- A close that follows OUR OWN auto-selection is the server tearing down one step
-    -- of a conversation it is about to re-show — not the player leaving. The loop
-    -- guards have to survive it: clearing them here is what let a menu that re-shows
-    -- after every selection wipe its own chain-depth and repeat history every cycle and
-    -- walk without bound (the loop the player sees). The repeat guard then blocks the
-    -- option on the re-show and the menu surfaces, as intended.
-    -- A close with NO auto-selection behind it is a real end (player escaped, walked
-    -- off, or we left the menu for manual) — reset, so the next conversation is fresh.
-    if state.autoSelected then
-        state.autoSelected = false
-    else
+    -- A close that lands right after OUR OWN auto-selection is the server tearing down
+    -- one step of a conversation it is about to re-show — not the player leaving. The
+    -- loop guards must survive it, or a menu that re-shows after every selection wipes
+    -- its own repeat history and chain depth each cycle and walks without bound.
+    --
+    -- This is a TIMESTAMP, not a consumable flag, and that is the whole point: one
+    -- logical close can raise GOSSIP_CLOSED more than once (fast mode closing a flavor
+    -- page itself, plus the server's own close). A flag got spent by the first event, so
+    -- the second read as "player left" and reset every guard at once — repeat history,
+    -- failed-menu fingerprint and chain depth together — which re-armed the option just
+    -- taken and spun the whole thing. A timestamp gives the same answer however many
+    -- times it is asked.
+    -- No "did we ever select" guard here, unlike the show path: a close with no selection
+    -- behind it IS the player leaving, which is exactly when the guards should clear.
+    if not IsServerContinuation() then
         ResetLoopGuards(safetyEngine)
     end
 
@@ -489,8 +538,20 @@ end
 -- ============================================================
 
 function GossipEngine.OnTargetChanged()
-    -- Restore frames on target change (fast mode may have hidden them)
     local services = GetServices()
+
+    -- A target change while still talking to the SAME npc is not a conversation
+    -- boundary — tab-targeting, a pet taunt, or the mob you were fighting dying all
+    -- fire this mid-dialog. Tearing down here cancelled the repump that carries a hub
+    -- NPC from one turn-in to the next (the "stopped halfway through" stall) and wiped
+    -- the repeat history under an open menu, so the next refresh re-selected an option
+    -- already taken (the loop the repeat guard exists to prevent).
+    if services and services.IsInteractionFrameOpen()
+       and SameNPC(services.SafeCall(UnitGUID, "npc"), state.expectedGUID) then
+        return
+    end
+
+    -- Restore frames on target change (fast mode may have hidden them)
     if services and services.RestoreAutomationFrames then
         services.RestoreAutomationFrames()
     end
@@ -537,7 +598,7 @@ function GossipEngine.GetStateInfo()
         automationHalted = state.automationHalted,
         lastShowTime = state.lastShowTime,
         expectedGUID = state.expectedGUID,
-        autoSelected = state.autoSelected,
+        lastSelectTime = state.lastSelectTime,
     }
 end
 

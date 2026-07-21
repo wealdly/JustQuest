@@ -91,8 +91,16 @@ local function EnsureFrame()
     frame.sub:SetWidth(TEXT_W)
     frame.sub:SetJustifyH("LEFT")
 
+    -- What you actually gain and lose. A percentage says how much better; only the stat
+    -- line says whether the trade is one you want, which is the question when a piece
+    -- swaps one secondary for another. Pre-coloured by the caller.
+    frame.stats = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    frame.stats:SetPoint("TOPLEFT", frame.sub, "BOTTOMLEFT", 0, -3)
+    frame.stats:SetWidth(TEXT_W)
+    frame.stats:SetJustifyH("LEFT")
+
     frame.buttons = {}
-    for i = 1, 3 do
+    for i = 1, 4 do
         local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         b:SetSize(BTN_W, BTN_H)
         b:Hide()
@@ -113,7 +121,9 @@ end
 --   head    = heading ("Gear upgrade")
 --   text    = the subject, usually the item link itself
 --   sub     = dimmed detail ("+12% upgrade · replaces <item>"); optional
---   actions = { {text=, func=}, ... } — omit for a passive notice that fades
+--   stats   = pre-coloured stat delta line ("+120 Haste  -85 Mastery"); optional
+--   actions = { {text=, func=}, ... } — omit for a passive notice that fades.
+--             Up to 4; laid out right-to-left so actions[1] reads leftmost.
 -- }
 function GearToast.Show(info)
     local f = EnsureFrame()
@@ -136,6 +146,9 @@ function GearToast.Show(info)
     f.sub:SetText(info.sub or "")
     f.sub:SetShown(info.sub ~= nil and info.sub ~= "")
 
+    f.stats:SetText(info.stats or "")
+    f.stats:SetShown(info.stats ~= nil and info.stats ~= "")
+
     -- Laid out right-to-left so the group hugs the right edge, but indexed forward so the
     -- caller's order reads left-to-right on screen: the action you most likely want first.
     local actions = info.actions
@@ -145,6 +158,10 @@ function GearToast.Show(info)
         local b, a = f.buttons[i], actions and actions[i]
         if a then
             b:SetText(a.text)
+            -- Fit the label rather than assuming it. With four actions the row is close to
+            -- the frame width, and a fixed width clips the longest one.
+            local textW = b:GetFontString() and b:GetFontString():GetStringWidth() or 0
+            b:SetWidth(math.max(BTN_W, math.ceil(textW) + 20))
             b:SetScript("OnClick", function()
                 if hideTimer then hideTimer:Cancel(); hideTimer = nil end
                 f:Hide()
@@ -168,6 +185,7 @@ function GearToast.Show(info)
     -- as often as not, and a fixed height would clip those and leave a hole under the rest.
     local textH = f.head:GetStringHeight() + 3 + f.text:GetStringHeight()
     if f.sub:IsShown() then textH = textH + 3 + f.sub:GetStringHeight() end
+    if f.stats:IsShown() then textH = textH + 3 + f.stats:GetStringHeight() end
     local h = PAD + math.max(ICON, textH) + PAD
     if n > 0 then h = h + BTN_H + GAP end
     f:SetHeight(h)
@@ -194,6 +212,17 @@ function GearToast.Show(info)
         snd = SOUNDKIT and SOUNDKIT.UI_EPICLOOT_TOAST
     end
     pcall(PlaySound, snd or 856, "Master")
+end
+
+-- Take the toast down without a decision. A prompt waits indefinitely by design, so when
+-- the question stops making sense — you equipped the item yourself, sold it, or it is no
+-- longer the best pick — the asker needs a way to withdraw it.
+function GearToast.Hide()
+    if frame then frame:Hide() end
+    if hideTimer then
+        hideTimer:Cancel()
+        hideTimer = nil
+    end
 end
 
 function GearToast.Initialize() end

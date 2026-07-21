@@ -106,6 +106,15 @@ function Config.Set(module, key, value)
         end
     end
 
+    -- Rescan in BOTH directions, unlike the toggles above: turning this off has to bring
+    -- back the recommendations it was suppressing, and the bags haven't moved either way.
+    if module == "gearSwap" and (key == "respectEquipmentSets" or key == "protectProfessionGear") then
+        local advisor = JustQuest.Core.GetModule("GearAdvisor")
+        if advisor and advisor.RescanNow then
+            advisor.RescanNow()
+        end
+    end
+
     if module == "gearSwap" and key == "weightItemLevel" then
         local inj = JustQuest.Core.GetModule("PawnStatInjection")
         if inj and inj.Refresh then

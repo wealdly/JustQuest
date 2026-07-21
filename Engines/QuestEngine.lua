@@ -13,6 +13,11 @@ local pcall = pcall
 local lastResetTime = 0
 local recentAcceptAttempts = {}
 local ACCEPT_ATTEMPT_TTL = 5.0
+-- Turn-ins need the same memory as accepts. The server can silently refuse one (missing
+-- gold, phasing, a group requirement) with no event back, so without this the same
+-- always-first-in-sort quest was re-selected every recovery tick and the other
+-- completable quests at that NPC were never reached.
+local recentTurnInAttempts = {}
 
 -- Authoritative quest-log-full signal. Set by ERR_QUEST_LOG_FULL (WoW fires it when
 -- an accept actually fails for fullness — the reliable signal, since the quest COUNT
@@ -99,6 +104,18 @@ StaticPopupDialogs["JUSTQUEST_CONFIRM_CURRENCY_ONCE"] = {
 -- Quest Visibility Filters (with blacklist integration)
 -- ============================================================
 
+-- These handlers are entered BUSY — the gossip pass owns the state transition, not them —
+-- so an early return has to release it, or an interfering frame opening mid-chain strands
+-- BUSY until the recovery timer notices. Deliberately a small helper and NOT a wrapper
+-- around each handler: the reason string is load-bearing (SafetyEngine keys frame-restore
+-- and repump decisions off it), and a wrapper could only supply a generic one.
+local function BailedOnAutomate(services, reason)
+    if services and services.CanAutomate() then return false end
+    local safetyEngine = GetSafetyEngine()
+    if safetyEngine then safetyEngine.EndProcessing(reason) end
+    return true
+end
+
 -- Check if active quest (turn-in) should be visible
 local function IsActiveQuestVisible(quest)
     if not quest or not quest.questID then return false end
@@ -114,7 +131,17 @@ local function IsActiveQuestVisible(quest)
     if not quest.isComplete then
         return false
     end
-    
+
+    -- Recently attempted and it didn't take — move on to the next completable quest
+    -- instead of re-selecting this one forever.
+    local lastAttempt = recentTurnInAttempts[quest.questID]
+    if lastAttempt and (GetTime() - lastAttempt) < ACCEPT_ATTEMPT_TTL then
+        if services and services.Debug then
+            services.Debug("Quest", "Filtered turn-in " .. tostring(quest.questID) .. ": recent attempt")
+        end
+        return false
+    end
+
     return true
 end
 
@@ -268,6 +295,7 @@ local function ProcessActiveQuests()
             services.Debug("Quest", "Turn-in: " .. (quest.title or "Unknown") .. " (ID: " .. tostring(quest.questID) .. ")")
         end
         
+        recentTurnInAttempts[quest.questID] = GetTime()
         if SelectQuest(C_GossipInfo.SelectActiveQuest, quest.questID) then
             return true
         end
@@ -651,16 +679,18 @@ function QuestEngine.OnQuestLogUpdate()
                     questName, popupType or "UNKNOWN", shouldProcess and "PROCESS" or "SKIP"))
             end
 
+            -- Removal belongs INSIDE the branch. Clearing a popup we deliberately
+            -- declined destroyed the player's own "click here to accept" button along
+            -- with it — a filter that should only mean "don't automate this" was
+            -- silently losing the quest instead. A popup we don't act on stays for them.
             if shouldProcess then
                 if popupType == "COMPLETE" then
                     services.SafeCall(ShowQuestComplete, questID)
                 elseif popupType == "OFFER" then
                     services.SafeCall(ShowQuestOffer, questID)
                 end
+                services.SafeCall(RemoveAutoQuestPopUp, questID)
             end
-
-            -- Only clear a popup we actually had (questID nil = no popup at this index).
-            services.SafeCall(RemoveAutoQuestPopUp, questID)
         end
     end
 end
@@ -671,8 +701,7 @@ function QuestEngine.OnQuestDetail()
     
     if not services then return end
     
-    -- Safety: Single validation gate
-    if not services.CanAutomate() then return end
+    if BailedOnAutomate(services, "quest_detail_cannot_automate") then return end
 
     local questTitle = GetTitleText and GetTitleText() or "Unknown Quest"
     local questID = GetQuestID and GetQuestID() or 0
@@ -772,7 +801,7 @@ function QuestEngine.OnQuestProgress()
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
 
-    if not (services and services.CanAutomate()) then return end
+    if BailedOnAutomate(services, "quest_progress_cannot_automate") then return end
 
     -- IsQuestCompletable() checks UI state; C_QuestLog.IsComplete() validates objectives
     local questID = GetQuestID and GetQuestID()
@@ -869,11 +898,20 @@ function QuestEngine.OnQuestProgress()
                 local dialogKey = isRepeatable and "JUSTQUEST_CONFIRM_CURRENCY"
                                                or "JUSTQUEST_CONFIRM_CURRENCY_ONCE"
                 safetyEngine.SetState("BUSY", "waiting_currency_prompt")
-                StaticPopup_Show(dialogKey, questTitle, currencyText, {
+                -- This state is exempt from stuck-state recovery (the wait on the player
+                -- is open-ended), so it is only safe while the popup is actually up.
+                -- StaticPopup_Show returns nil when all four slots are taken or the
+                -- player is dead — with the return ignored, that was a BUSY nothing
+                -- could ever clear short of /reload.
+                local shown = StaticPopup_Show(dialogKey, questTitle, currencyText, {
                     questID = questID,
                     questTitle = questTitle,
                     currencyText = currencyText,
                 })
+                if not shown then
+                    if services.OutputHalt then services.OutputHalt("quest_requires_currency") end
+                    safetyEngine.EndProcessing("currency_prompt_unavailable")
+                end
                 return
             end
 
@@ -931,7 +969,7 @@ function QuestEngine.OnQuestComplete()
     local rewardEngine = JustQuest.Core.GetModule("RewardEngine")
     local containerEngine = JustQuest.Core.GetModule("ContainerEngine")
     
-    if not (services and services.CanAutomate()) then return end
+    if BailedOnAutomate(services, "quest_complete_cannot_automate") then return end
 
     -- Per-quest debounce: prevent duplicate processing of the same quest.
     -- Global debounce would accidentally skip a DIFFERENT quest's QUEST_COMPLETE
@@ -1136,12 +1174,26 @@ function QuestEngine.OnQuestAcceptedSuccess(questID)
     if questID then
         recentAcceptAttempts[questID] = nil
     end
-    
+
     -- Also prune old entries (> 60s) to prevent memory growth
     local now = GetTime()
     for id, timestamp in pairs(recentAcceptAttempts) do
         if (now - timestamp) > 60 then
             recentAcceptAttempts[id] = nil
+        end
+    end
+end
+
+-- Clear turn-in tracking once the turn-in actually lands.
+function QuestEngine.OnQuestTurnedInSuccess(questID)
+    if questID then
+        recentTurnInAttempts[questID] = nil
+    end
+
+    local now = GetTime()
+    for id, timestamp in pairs(recentTurnInAttempts) do
+        if (now - timestamp) > 60 then
+            recentTurnInAttempts[id] = nil
         end
     end
 end

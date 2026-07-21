@@ -18,6 +18,11 @@ local GetConfig = JustQuest.Core.ModuleGetter("Config")
 -- if the player pinned a different spec for loot, respect it so tank/healer loot scales
 -- are used even while playing a DPS spec. GetLootSpecialization() returns a global spec
 -- ID; Pawn keys on the 1-4 index GetSpecialization() returns, so convert by probing.
+--
+-- For scoring things you KEEP (quest rewards). The Gear Advisor deliberately does not use
+-- this — it recommends gear to wear right now, and loot spec says nothing about what you
+-- should be wearing. A Guardian druid set to Feral for drops must still be advised on
+-- Guardian gear, and if no Feral scale exists the advisor would score nothing whatsoever.
 function PawnScoring.EffectiveSpecIndex()
     local config = GetConfig()
     local useLootSpec = not config or config.Get("quest", "pawnUseLootSpec") ~= false
@@ -112,8 +117,12 @@ function PawnScoring.ScoreItem(itemLink, specIndex, relevant)
                 local pct = entry.PercentUpgrade or 0
                 if pct > pawnPercentUpgrade then
                     pawnPercentUpgrade = pct
-                    existingItemLink   = entry.ExistingItemLink  -- what it would replace
                 end
+                -- Baseline capture is SEPARATE from the max. Tying it to a strict
+                -- improvement meant a 0% (or nil) upgrade set isUpgrade but left
+                -- existingItemLink nil, which silently skipped the item-level check
+                -- below — exactly the case that check exists to catch.
+                existingItemLink = existingItemLink or entry.ExistingItemLink
             end
         end
     end

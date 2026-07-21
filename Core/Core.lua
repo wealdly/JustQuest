@@ -198,7 +198,12 @@ local function OnQuestAccepted(questID)
     end
 end
 
-local function OnQuestTurnedIn()
+local function OnQuestTurnedIn(questID)
+    local questEngine = JustQuest.Core.GetModule("QuestEngine")
+    if questEngine and questEngine.OnQuestTurnedInSuccess then
+        questEngine.OnQuestTurnedInSuccess(questID)
+    end
+
     -- Reset reward flag in case a prior crash left it stuck
     local rewardEngine = JustQuest.Core.GetModule("RewardEngine")
     if rewardEngine and rewardEngine.ResetProcessingFlag then
@@ -443,11 +448,11 @@ local function HandleSpecialEvent(event, ...)
     end
     
     if event == "GOSSIP_SHOW" then
-        local showDelay = services.GetTiming("SERVER_SYNC_DELAY", 0.15)
+        local showDelay = services.GetTiming("GOSSIP_EVENT_DISPATCH", 0.05)
         services.CoalescedGossipPass("gossip_show", showDelay)
         return true
     elseif event == "QUEST_GREETING" then
-        local greetingDelay = services.GetTiming("QUEST_ACCEPT_POLL_INTERVAL", 0.05)
+        local greetingDelay = services.GetTiming("GOSSIP_EVENT_DISPATCH", 0.05)
         services.CoalescedGossipPass("quest_greeting", greetingDelay)
         return true
     elseif event == "GOSSIP_OPTIONS_REFRESHED" then
@@ -455,7 +460,7 @@ local function HandleSpecialEvent(event, ...)
         -- processes available/active quests before GossipEngine selects options.
         -- Without this, GossipEngine.HandleGossip() runs directly, ignoring
         -- remaining quests and causing gossip loops.
-        local refreshDelay = services.GetTiming("SERVER_SYNC_DELAY", 0.15)
+        local refreshDelay = services.GetTiming("GOSSIP_EVENT_DISPATCH", 0.05)
         services.ScheduleContentCheck(refreshDelay, "gossip_options_refreshed")
         return true
     end
@@ -553,6 +558,13 @@ function JustQuest.Core.SetupEvents()
     local config = JustQuest.Core.GetModule("Config")
     if config and config.Get(nil, "enabled") then
         JustQuest.Core.RegisterEvents()
+        -- Disabling tears down every timer, including the persistent recovery nets that
+        -- are meant to survive a teardown. Core.Initialize is one-shot, so without this
+        -- a disable/enable cycle left the session with no stuck-state recovery and no
+        -- fast-mode un-hide for the rest of the session. ScheduleRepeating replaces on
+        -- the same key, so re-initializing is idempotent.
+        local safety = JustQuest.Core.GetModule("SafetyEngine")
+        if safety and safety.Initialize then pcall(safety.Initialize) end
     else
         JustQuest.Core.UnregisterEvents()
     end

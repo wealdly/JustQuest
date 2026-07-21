@@ -303,6 +303,32 @@ local function CreateGearOptions()
                         get = CreateAccessor("gearSwap", "minUpgradePct").get,
                         set = CreateAccessor("gearSwap", "minUpgradePct").set,
                     },
+                    respectEquipmentSets = {
+                        type = "toggle",
+                        name = "Respect Equipment Sets",
+                        desc = "Leave gear alone if it belongs to one of your saved equipment sets.\n\n" ..
+                               "A speed or utility set is worn for what it does, not its item level, so " ..
+                               "suggesting a higher-item-level replacement every time one drops is just noise. " ..
+                               "Only the slots filled by set gear are held back — everything else is still offered.\n\n" ..
+                               "|cffff9999Turn this off if you keep your everyday gear saved as a set.|r",
+                        width = "full",
+                        order = 5,
+                        disabled = advisorDisabled,
+                        get = CreateAccessor("gearSwap", "respectEquipmentSets").get,
+                        set = CreateAccessor("gearSwap", "respectEquipmentSets").set,
+                    },
+                    protectProfessionGear = {
+                        type = "toggle",
+                        name = "Protect Profession Gear",
+                        desc = "Never suggest replacing an equipped fishing pole or profession tool.\n\n" ..
+                               "These sit in ordinary equipment slots, so to a stat-based score they just " ..
+                               "look like weak gear — and get suggested away right before you want them.",
+                        width = "full",
+                        order = 6,
+                        disabled = advisorDisabled,
+                        get = CreateAccessor("gearSwap", "protectProfessionGear").get,
+                        set = CreateAccessor("gearSwap", "protectProfessionGear").set,
+                    },
                     weightItemLevel = {
                         type = "toggle",
                         name = "Weight Item Level (Pawn)",
@@ -310,7 +336,7 @@ local function CreateGearOptions()
                                "After enabling, give it a weight in your Pawn scale (e.g. ItemLevel=5) or in Pawn's stat list under \"JustQuest\".\n\n" ..
                                "|cffff9999Affects all Pawn scoring — tooltips, reward picks, and the advisor — and modifies Pawn globally.|r",
                         width = "full",
-                        order = 5,
+                        order = 7,
                         get = CreateAccessor("gearSwap", "weightItemLevel").get,
                         set = CreateAccessor("gearSwap", "weightItemLevel").set,
                     },
@@ -338,6 +364,9 @@ local function CreateGearOptions()
                             local count = 0
                             for _ in pairs(recs) do count = count + 1 end
                             if count == 0 then
+                                -- Active spec, matching what the advisor actually scores
+                                -- with — not the loot spec, or this reports "no scale" for
+                                -- a spec the advisor never consulted.
                                 if ps and ps.HasScaleForSpec and not ps.HasScaleForSpec(GetSpecialization()) then
                                     return "|cffff8800No active Pawn scale for this spec — set one up in Pawn (usually automatic). Run |r|cffffff00/jq gear check|r|cffff8800 for details.|r"
                                 end

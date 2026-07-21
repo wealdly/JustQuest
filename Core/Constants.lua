@@ -54,6 +54,13 @@ JustQuest.Constants.ITEM_CLASS = {
     QUESTITEM     = 12,
     MISCELLANEOUS = 15,
     BATTLEPET     = 17,
+    PROFESSION    = 19,  -- profession tools and accessories
+}
+
+-- Weapon subclasses worth singling out. A fishing pole is a main-hand weapon as far as the
+-- equip location is concerned, so nothing else distinguishes it from gear.
+JustQuest.Constants.WEAPON_SUBCLASS = {
+    FISHING_POLE = 20,
 }
 
 -- Enum.ItemMiscellaneousSubclass values
@@ -69,6 +76,14 @@ JustQuest.Constants.ITEM_MISC_SUBCLASS = {
 -- ============================================================
 
 JustQuest.Constants.TIMING = {
+    -- Event-driven dispatch (scaled). GOSSIP_SHOW / GOSSIP_OPTIONS_REFRESHED /
+    -- QUEST_GREETING mean the server has ALREADY delivered the menu, so there is no
+    -- round-trip left to wait for — this only has to clear the same-frame event storm
+    -- and let coalescing settle. The post-action pumps below are a different problem and
+    -- keep their longer delay. Anything still not ready is covered by the backoff poll
+    -- in ScheduleDispatch, which retries to RE_PUMP_TOTAL_TIME.
+    GOSSIP_EVENT_DISPATCH = 0.05,
+
     -- Step delays (scaled by timing multiplier)
     SERVER_SYNC_DELAY = 0.15,
     QUEST_PUMP_STANDARD = 0.15,
@@ -190,6 +205,8 @@ JustQuest.Constants.DEFAULTS = {
             minUpgradePct = 5,       -- advisor: ignore upgrades smaller than this percent
             weightItemLevel = false, -- expose Item Level as a weightable Pawn stat (opt-in, global)
             announce = true,         -- on-screen toast + sound when gear is equipped/recommended
+            respectEquipmentSets = true, -- don't offer to replace gear belonging to a saved equipment set
+            protectProfessionGear = true, -- don't offer to replace an equipped fishing pole / profession tool
             ignoreItems = {},        -- persistent "never recommend" list (itemID -> name)
         },
 
@@ -241,6 +258,7 @@ JustQuest.Constants.INTERFERING_FRAMES = {
     "VoidStorageFrame",
     "AuctionHouseFrame",
     "MailFrame",
+    "TradeFrame",
     "PetStableFrame",
     "TabardFrame",
     "GuildRegistrarFrame",

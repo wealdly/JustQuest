@@ -54,6 +54,16 @@ function SafetyEngine.SetState(newState, reason)
         end
         stateStartTime = GetTime()
 
+        -- Arm the cursor indicator on the way into BUSY. Nothing disarms it here: a chain
+        -- blips through IDLE between steps far faster than the arming delay, so cancelling
+        -- on every IDLE reset the clock before it could ever fire and the indicator never
+        -- appeared at all. It retires itself instead — the armed callback re-checks
+        -- IsBusy before showing, and its OnUpdate hides it the frame automation stops.
+        if newState == "BUSY" then
+            local indicator = JustQuest.Core.GetModule("AutomationIndicator")
+            if indicator and indicator.Show then indicator.Show() end
+        end
+
         -- Trigger container processing when automation completes
         if newState == "IDLE" and oldState == "BUSY" then
             local containerEngine = JustQuest.Core.GetModule("ContainerEngine")
@@ -137,7 +147,13 @@ function SafetyEngine.Initialize()
 
     -- Periodic stuck-state recovery
     if services and services.ScheduleRepeating then
-        services.ScheduleRepeating("safety_stuck_state_recovery", 1.0, function()
+        -- 0.5s, not 1s. Both the fast-mode frame reveal and stall recovery only happen on
+        -- this tick, so the tick interval is added to each of their thresholds as jitter:
+        -- at 1Hz a frame that should reveal at 0.75s could stay invisible until 1.75s,
+        -- which is the "it's stuck, walk away to clear it" window. Halving the tick
+        -- halves that tail. The body is a handful of comparisons that early-out when
+        -- IDLE with no frame open, so the extra wakeups cost nothing measurable.
+        services.ScheduleRepeating("safety_stuck_state_recovery", 0.5, function()
             -- The currency-spend prompt is a deliberate, open-ended wait on the
             -- player; its popup is the interaction surface, so leave the frame
             -- hidden behind it and never time it out.
@@ -363,7 +379,13 @@ function SafetyEngine.BeginProcessing(reason)
     if state ~= "IDLE" then
         local config = GetConfig()
         local timeout = config and config.Get("advanced", "autoRecoveryTimeout") or JustQuest.Constants.TIMING.AUTO_RECOVERY_TIMEOUT
-        if (GetTime() - stateStartTime) > timeout then
+        -- Measure the gap since the last automation STEP, not since the chain first went
+        -- BUSY. stateStartTime only moves on an actual state change, so a BUSY->BUSY
+        -- step (accepting -> completing -> reward) never refreshed it: any chain running
+        -- longer than the timeout in total got force-IDLEd and became re-entrant, even
+        -- while it was progressing normally. CanProcess and the periodic recovery both
+        -- already use _lastProcessingTime; this was the odd one out.
+        if (GetTime() - (JustQuest._lastProcessingTime or 0)) > timeout then
             SafetyEngine.SetState("IDLE", "auto_recovery")
         else
             DebugSafety("BeginProcessing blocked: already BUSY")

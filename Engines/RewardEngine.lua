@@ -142,19 +142,27 @@ function RewardEngine.ProcessQuestReward()
                 services.Debug("Rewards", "Simple mode: selecting highest vendor value")
             end
             local bestIdx = RewardEngine.GetHighestVendorValue(numChoices)
+            if not bestIdx then
+                RewardEngine.HaltForManualSelection("no_comparable_reward_value")
+                return
+            end
             RewardEngine.SelectReward(bestIdx)
             return
         end
-        
+
         if RewardEngine.AllRewardsTrivial(numChoices) then
             if services.Debug then
                 services.Debug("Rewards", "All trivial rewards: fast vendor value selection")
             end
             local bestIdx = RewardEngine.GetHighestVendorValue(numChoices)
+            if not bestIdx then
+                RewardEngine.HaltForManualSelection("no_comparable_reward_value")
+                return
+            end
             RewardEngine.SelectReward(bestIdx)
             return
         end
-        
+
         -- Smart analysis for significant rewards
         local rewardChoice = RewardEngine.GetRecommendedChoice(numChoices)
         if rewardChoice then
@@ -247,10 +255,13 @@ function RewardEngine.AllRewardsTrivial(numChoices)
     return checkedCount > 0
 end
 
+-- Returns nil when nothing actually scored — the caller must halt rather than fall back
+-- to choice 1. Rewards with no vendor price (currencies, no itemLink yet) used to return
+-- index 1 as though it had won a comparison that never happened.
 function RewardEngine.GetHighestVendorValue(numChoices)
-    local bestIdx = 1
+    local bestIdx = nil
     local bestValue = 0
-    
+
     for i = 1, numChoices do
         local itemLink = GetQuestItemLink and GetQuestItemLink("choice", i)
         if itemLink then
@@ -524,7 +535,11 @@ function RewardEngine.SelectSmartChoice(choices)
             if info.pawnPercentUpgrade and info.pawnPercentUpgrade > 0 then
                 return info.pawnPercentUpgrade
             end
-            return (info.difference or 0) * 0.001  -- normalise ilvl delta to same scale as Pawn %
+            -- `difference` is only set by the ilvl path — the Pawn and empty-slot paths
+            -- leave it nil, so with a 0 buffer every equal-ilvl "upgrade" scored 0 and
+            -- ties were broken by list order. Fall back to the reward's own item level
+            -- so a real comparison decides.
+            return (info.difference or 0) * 0.001 + (info.rewardLevel or 0) * 0.000001
         end
 
         local bestUpgrade = upgrades[1]

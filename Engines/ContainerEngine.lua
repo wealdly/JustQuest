@@ -97,6 +97,14 @@ local function ShouldOpen(info)
     local mode = configCache.mode
     if mode == "list" then return false end  -- whitelist only
 
+    -- Never auto-open a quest item. The openable flag is set on plenty of them
+    -- ("Package of Identified Plants", "Bundle of Reports"), and opening one out of
+    -- quest order can consume something that isn't re-obtainable. The blacklist can't
+    -- cover this — it's a hand-curated list against a whole item class. Whitelisting
+    -- one explicitly still works: that check is above.
+    local classID = select(6, C_Item.GetItemInfoInstant(itemID))
+    if classID == JustQuest.Constants.ITEM_CLASS.QUESTITEM then return false end
+
     if type(info.hasLoot) == "boolean" then
         if not info.hasLoot then return false end          -- not an openable container
         if mode == "safe" then return not info.isLocked end  -- free-open only; lockboxes wait
@@ -248,8 +256,11 @@ local function CleanupFailedContainers()
     local staleTimeout = JustQuest.Constants.TIMING.CONTAINER_STALE_TIMEOUT
     
     for key, info in pairs(failedContainers) do
-        local stale = (info.retryCount >= maxRetries) or 
-                     (currentTime - info.lastAttempt > cleanupInterval) or 
+        -- Exhausted is not stale: dropping the record here handed the retry budget
+        -- straight back, so CONTAINER_MAX_RETRIES reset every cleanup pass and a
+        -- container that could never open kept being retried for the whole session.
+        -- Only time expires a record.
+        local stale = (currentTime - info.lastAttempt > cleanupInterval) or
                      (currentTime - info.firstFailureTime > staleTimeout)
         
         if stale then
