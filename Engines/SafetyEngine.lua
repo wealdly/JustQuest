@@ -230,6 +230,12 @@ function SafetyEngine.MarkSelection(optionID)
     if optionID then selectedOptions[optionID] = true end
 end
 
+-- Silent read of the repeat history (ShouldSkipRepeat logs; this is for callers that
+-- only want to know, e.g. the traverse detecting a return to an already-walked menu).
+function SafetyEngine.WasSelected(optionID)
+    return optionID ~= nil and selectedOptions[optionID] == true
+end
+
 -- Clear selection history (NPC changed or gossip closed).
 function SafetyEngine.ClearSelections()
     wipe(selectedOptions)

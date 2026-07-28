@@ -1,2 +1,21 @@
 ## [Unreleased]
 
+### Added
+- **Anima power selection in Torghast.** JustQuest can now pick your anima powers for you, from a curated list of which are worth taking and which are traps — powers that stop you jumping, drain your health, or cap your speed are never taken, whatever else is on offer. A power whose own description states a drawback is refused too, even if the list rates it highly. For powers the list doesn't cover, JustQuest falls back to what the game itself says about them — their quality and whether they're offensive, defensive or utility — weighed against what you're playing for. A power window has to be answered before you can carry on, so the best safe option is always taken rather than handed back for an unremarkable choice; the window only comes back to you when every option on offer is one of the harmful ones. Choose whether it picks for clearing the run or for fast farming, and optionally let it spend a reroll when nothing on offer is worth having. When nothing is worth taking, the choice comes back to you rather than defaulting to whatever appeared first. Off until you turn it on, like everything else that answers a pop-up. `/jq torghast`
+- **Getting into Torghast.** At the wayfinder, JustQuest can select the highest layer you've unlocked and start the climb, so you don't have to page across to it and pick it every run. Off until you turn it on, and left alone entirely if you're not the group leader or the group isn't gathered yet. The ready prompt that follows is still yours to accept — the game does not allow an addon to answer that one. `/jq torghast climb`
+- **New "Instances" settings section** gathering the delve and Torghast options together, and reachable from the standard AddOns settings list — the delve options were previously only findable through `/jq config`.
+- When automation leaves a dialog open on purpose, a short note at the bottom of the panel now says why (e.g. it contains a travel option, the game requires a manual choice, or there's simply nothing to automate).
+
+### Fixed
+- **Quick Exit no longer appears in battlegrounds and arenas.** It counted them as ordinary instances, and using it there would have left the match — a deserter penalty in a battleground, a forfeit in an arena. Leaving those is yours to do.
+- A vendor, trainer, or flight master standing behind a couple of lines of small talk could stop opening for you. Once JustQuest had looked through that NPC's dialog and found nothing, it stopped offering the service too — so clicking the same NPC again just showed the menu. Services now always fire; only the dialog exploration retires.
+
+### Changed
+- **Dialog exploration now stands down inside dungeons, raids and other instances when you're in a group.** In instanced content, an NPC's one conversation option is often the one that starts the fight — "we're ready", "begin the assault", "send in the next wave" — and nothing marks those as different from small talk. Vendors, quest options and anything you've whitelisted still fire as normal; only the exploratory click stops. Playing solo is unchanged, so soloing old raids and scenarios still works exactly as before.
+- Dialog options that take you into instanced content at a difficulty you didn't pick are now left for you, the same way the delve difficulty window already is.
+- Choosing a Chromie Time timeline is now left alone by automation.
+- Chatty NPCs feel much less clunky: dialog exploration now takes at most one conversation branch instead of clicking through every option, and once an NPC's dialog leads nowhere, re-opening that NPC shows the menu immediately instead of re-running the exploration.
+- Service options (vendor, trainer, flight master, bank, etc.) are now taken right away instead of after conversation options — a chatty vendor opens their shop instead of talking first.
+- Gossip automation no longer auto-clicks dialog options that grant items or currency, cast a spell, or play a cinematic. These now stay on screen for you to choose (whitelisted options still fire).
+- Smarter conversation tracking: the game's own "conversation continuing" signal is now used when a dialog closes mid-chain, so multi-step conversations with slow transitions no longer risk re-selecting earlier options.
+

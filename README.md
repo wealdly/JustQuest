@@ -9,9 +9,13 @@ JustQuest handles the repetitive parts of questing automatically:
 - **Accepts quests** from NPCs, items, and proximity triggers
 - **Turns in completed quests** — prioritizes important/campaign quests
 - **Selects gossip options** that lead to quests (blue "(Quest)" labeled options)
+- **Opens services through small talk** — vendors, trainers, flight masters and the like fire immediately, even when parked behind a line of chatter
 - **Picks quest rewards** intelligently (highest vendor value, or halts for significant upgrades)
 - **Opens reward containers** from quest rewards automatically
+- **Picks anima powers and starts the climb in Torghast** (optional, off by default)
 - **Skips cinematics and movies** (optional)
+
+When automation deliberately leaves a dialog open — a travel option, a forced choice, nothing safe to click — a short note at the bottom of the panel says why.
 
 Hold any modifier key (Shift, Ctrl, Alt) at any time to instantly pause automation and interact manually.
 
@@ -25,7 +29,9 @@ JustQuest is designed to be safe by default — it won't blindly click through e
 - **Blacklisted content** — Built-in database of known dangerous NPCs, quests, and gossip options
 - **PvP and escort quests** — Skipped unless explicitly enabled
 - **Story/branching choices** — Multiple colored options require manual selection
-- **ForceGossip NPCs** — Lore/story NPCs can be configured to halt automation
+- **ForceGossip NPCs** — Menus the server marks "show the player" are never auto-advanced (whitelisted options are the deliberate exception)
+- **Reward and event options** — Dialog options that grant items, cast a spell, or play a cinematic are left for you
+- **Encounter starters** — Dialog exploration stands down in group instances, where the one conversation option is often "begin the fight"
 - **Significant rewards** — Rare+ quality multi-choice rewards prompt manual selection
 
 ### Anti-Loop Protection
@@ -55,10 +61,17 @@ Hides quest and gossip frames during automation for a seamless experience. Frame
 - Customizable whitelist and blacklist via `/jq container` commands or the config UI
 - Respects bank/void storage (won't open containers at the bank)
 
+### Instances (Delves & Torghast)
+
+- Delve automation options (difficulty window handling and related choices)
+- Torghast anima power selection from a curated safety-first list — powers that stop jumping, drain health, or cap speed are never taken; pick for clearing or for farming, with optional reroll
+- Torghast wayfinder: selects your highest unlocked layer and starts the climb (group leader only, everyone gathered)
+
 ### LFG Quick Start
 
 - Auto-enters "specific dungeon" LFG when entering a dungeon solo
 - Configurable per-dungeon enable/disable
+- Stays out of battlegrounds and arenas
 
 ## Installation
 
@@ -75,6 +88,10 @@ Hides quest and gossip frames during automation for a seamless experience. Frame
 /jq status       - Show current status
 /jq debug [on|off] - Toggle debug logging
 /jq inspect      - Inspect current NPC/quest frame state
+/jq fast         - Toggle fast mode
+/jq gear         - Gear advisor options
+/jq delve        - Delve automation options
+/jq torghast     - Torghast options (anima powers, climb)
 /jq container add|remove|block|unblock|list <itemID>
                  - Manage container whitelist/blacklist
 /jql             - Leave instance/party
@@ -90,6 +107,7 @@ Options are available via `/jq config` or the WoW AddOns settings panel:
 | **Gossip** | Gossip automation, ForceGossip handling |
 | **Rewards** | Auto-reward, simple vs smart mode |
 | **Containers** | Auto-open, whitelist/blacklist management |
+| **Instances** | Delve options, Torghast anima powers and climb |
 | **Cinematics** | Skip cinematics and movies |
 | **Advanced** | Timeouts, fast mode, debug, LFG quick start |
 | **Profiles** | AceDB profiles |

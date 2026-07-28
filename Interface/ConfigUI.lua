@@ -156,88 +156,193 @@ local function delveNoPower()
     return not (c and c.Get("delve", "autoAcceptPower"))
 end
 
+local function torghastNoPower()
+    local c = JustQuest.Core.GetModule("Config")
+    return not (c and c.Get("torghast", "autoSelectPower"))
+end
+
 local function delveNoTier()
     local c = JustQuest.Core.GetModule("Config")
     return not (c and c.Get("delve", "autoTier"))
 end
 
-local function CreateDelveOptions()
+-- Instance-content automation. Delves and Torghast sit together because they are the same
+-- kind of exception: content where a repeated pop-up has a knowable answer, so you can opt
+-- into having it answered. Everything here is off until you turn it on.
+local function CreateInstanceOptions()
     return {
         type = "group",
-        name = "Delves",
+        name = "Instances",
         order = 3.6,  -- after Gear, before Containers
         args = {
             intro = {
                 type = "description",
                 order = 1,
                 fontSize = "medium",
-                name = "Delve-only automation. Everywhere else a pop-up choice is always left to you — this is the one place you can opt out of being asked, because a delve power is offered one at a time, it's always worth taking, and there's nothing to decide.\n\n" ..
-                       "|cffff9999The difficulty picker is otherwise left alone entirely: JustQuest never touches a tier unless you turn on Auto-Select Tier below.|r",
+                name = "Automation for instanced content, where a pop-up choice can be worth answering for you.\n\n" ..
+                       "Everywhere else in JustQuest a choice is always left to you. These are the exceptions you can opt into — and they stay off until you do.\n\n" ..
+                       "|cffff9999Anything the game asks you to confirm, and any choice it marks as requiring a selection, is still always handed back.|r",
             },
 
-            powers = {
+            delves = {
                 type = "group",
-                name = "Delve Powers",
-                inline = true,
+                name = "Delves",
                 order = 2,
                 args = {
-                    autoAcceptPower = {
-                        type = "toggle",
-                        name = "Auto-Take Powers",
-                        desc = "Take the delve power automatically instead of being asked for a click you were always going to make.",
-                        width = "full",
+                    intro = {
+                        type = "description",
                         order = 1,
-                        get = CreateAccessor("delve", "autoAcceptPower").get,
-                        set = CreateAccessor("delve", "autoAcceptPower").set,
+                        fontSize = "medium",
+                        name = "A delve power is offered one at a time, it's always worth taking, and there's nothing to decide — so this is the one place a pop-up can be answered without weighing anything.\n\n" ..
+                               "|cffff9999The difficulty picker is otherwise left alone entirely: JustQuest never touches a tier unless you turn on Auto-Select Tier below.|r",
                     },
-                    hidePowerFrame = {
-                        type = "toggle",
-                        name = "Hide The Power Pop-Up",
-                        desc = "Hide the power window while it's being taken for you. It comes back on its own whenever the choice returns to you.",
-                        width = "full",
+
+                    powers = {
+                        type = "group",
+                        name = "Delve Powers",
+                        inline = true,
                         order = 2,
-                        disabled = delveNoPower,
-                        get = CreateAccessor("delve", "hidePowerFrame").get,
-                        set = CreateAccessor("delve", "hidePowerFrame").set,
+                        args = {
+                            autoAcceptPower = {
+                                type = "toggle",
+                                name = "Auto-Take Powers",
+                                desc = "Take the delve power automatically instead of being asked for a click you were always going to make.",
+                                width = "full",
+                                order = 1,
+                                get = CreateAccessor("delve", "autoAcceptPower").get,
+                                set = CreateAccessor("delve", "autoAcceptPower").set,
+                            },
+                            hidePowerFrame = {
+                                type = "toggle",
+                                name = "Hide The Power Pop-Up",
+                                desc = "Hide the power window while it's being taken for you. It comes back on its own whenever the choice returns to you.",
+                                width = "full",
+                                order = 2,
+                                disabled = delveNoPower,
+                                get = CreateAccessor("delve", "hidePowerFrame").get,
+                                set = CreateAccessor("delve", "hidePowerFrame").set,
+                            },
+                        },
+                    },
+
+                    tier = {
+                        type = "group",
+                        name = "Difficulty",
+                        inline = true,
+                        order = 3,
+                        args = {
+                            autoTier = {
+                                type = "toggle",
+                                name = "Auto-Select Tier",
+                                desc = "Pick your usual tier for you when the delve picker opens. Nothing is entered — you still press the button.",
+                                width = "full",
+                                order = 1,
+                                get = CreateAccessor("delve", "autoTier").get,
+                                set = CreateAccessor("delve", "autoTier").set,
+                            },
+                            preferredTier = {
+                                type = "range",
+                                name = "Tier",
+                                desc = "Which tier to select. Skipped if you can't queue for it yet.",
+                                min = 1, max = 11, step = 1,
+                                order = 2,
+                                disabled = delveNoTier,
+                                get = CreateAccessor("delve", "preferredTier").get,
+                                set = CreateAccessor("delve", "preferredTier").set,
+                            },
+                        },
                     },
                 },
             },
 
-            tier = {
+            torghast = {
                 type = "group",
-                name = "Difficulty",
-                inline = true,
+                name = "Torghast",
                 order = 3,
                 args = {
-                    autoTier = {
-                        type = "toggle",
-                        name = "Auto-Select Tier",
-                        desc = "Pick your usual tier for you when the delve picker opens. Nothing is entered — you still press the button.",
-                        width = "full",
+                    intro = {
+                        type = "description",
                         order = 1,
-                        get = CreateAccessor("delve", "autoTier").get,
-                        set = CreateAccessor("delve", "autoTier").set,
+                        fontSize = "medium",
+                        name = "Anima powers are a real choice, but a repetitive one with a knowable answer — so JustQuest can answer it from a curated list of which powers are worth taking and which are traps.\n\n" ..
+                               "|cffff9999When nothing on offer is worth taking, the choice goes back to you rather than defaulting to whatever came first.|r",
                     },
-                    preferredTier = {
-                        type = "range",
-                        name = "Tier",
-                        desc = "Which tier to select. Skipped if you can't queue for it yet.",
-                        min = 1, max = 11, step = 1,
+
+                    powers = {
+                        type = "group",
+                        name = "Anima Powers",
+                        inline = true,
                         order = 2,
-                        disabled = delveNoTier,
-                        get = CreateAccessor("delve", "preferredTier").get,
-                        set = CreateAccessor("delve", "preferredTier").set,
+                        args = {
+                            autoSelectPower = {
+                                type = "toggle",
+                                name = "Auto-Select Powers",
+                                desc = "Score the powers on offer and take the best one.\n\n" ..
+                                       "Powers known to strand or kill you — movement restrictions, health drains — are never taken, whatever else is on offer.",
+                                width = "full",
+                                order = 1,
+                                get = CreateAccessor("torghast", "autoSelectPower").get,
+                                set = CreateAccessor("torghast", "autoSelectPower").set,
+                            },
+                            hidePowerFrame = {
+                                type = "toggle",
+                                name = "Hide The Power Pop-Up",
+                                desc = "Hide the power window while it's being answered for you. It comes back on its own whenever the choice returns to you.",
+                                width = "full",
+                                order = 2,
+                                disabled = torghastNoPower,
+                                get = CreateAccessor("torghast", "hidePowerFrame").get,
+                                set = CreateAccessor("torghast", "hidePowerFrame").set,
+                            },
+                            mode = {
+                                type = "select",
+                                name = "Pick For",
+                                desc = "Which powers count as good.\n\n" ..
+                                       "|cffffd100Clearing|r favours damage and staying alive.\n" ..
+                                       "|cffffd100Farming|r favours movement speed and Phantasma, for fast repeat runs.",
+                                order = 3,
+                                disabled = torghastNoPower,
+                                values = { normal = "Clearing", farming = "Farming" },
+                                get = CreateAccessor("torghast", "mode").get,
+                                set = CreateAccessor("torghast", "mode").set,
+                            },
+                            autoReroll = {
+                                type = "toggle",
+                                name = "Reroll A Bad Offering",
+                                desc = "Spend one of your rerolls when nothing on offer is worth taking.\n\n" ..
+                                       "|cffff9999Rerolls are limited. Left off, a bad offering is handed back to you instead.|r",
+                                width = "full",
+                                order = 4,
+                                disabled = torghastNoPower,
+                                get = CreateAccessor("torghast", "autoReroll").get,
+                                set = CreateAccessor("torghast", "autoReroll").set,
+                            },
+                        },
                     },
-                    autoEnter = {
-                        type = "toggle",
-                        name = "And Go Straight In",
-                        desc = "Enter the delve as soon as the tier is selected, without pressing the button.\n\n" ..
-                               "|cffff9999This walks you into the delve the moment you open the picker.|r",
-                        width = "full",
+
+                    entrance = {
+                        type = "group",
+                        name = "Entering",
+                        inline = true,
                         order = 3,
-                        disabled = delveNoTier,
-                        get = CreateAccessor("delve", "autoEnter").get,
-                        set = CreateAccessor("delve", "autoEnter").set,
+                        args = {
+                            autoClimb = {
+                                type = "toggle",
+                                name = "Pick The Highest Layer",
+                                desc = "At the wayfinder, select the highest layer you've unlocked and press Climb.\n\n" ..
+                                       "If you're not the group leader, or the portal isn't ready yet, the button is left for you.",
+                                width = "full",
+                                order = 1,
+                                get = CreateAccessor("torghast", "autoClimb").get,
+                                set = CreateAccessor("torghast", "autoClimb").set,
+                            },
+                            -- NOTE: there is deliberately no "accept the prompt" toggle. The
+                            -- ready prompt runs AcceptProposal(), a protected function — an
+                            -- addon clicking it produces "Interface action failed because of an
+                            -- AddOn" and nothing else. Blizzard protects it precisely so queue
+                            -- pops cannot be auto-accepted. Selecting the layer is as far as
+                            -- automation can go.
+                        },
                     },
                 },
             },
@@ -1349,7 +1454,7 @@ local function BuildOptionsTable()
         args = {
             general = CreateGeneralOptions(),
             gear = CreateGearOptions(),
-            delves = CreateDelveOptions(),
+            instances = CreateInstanceOptions(),
             quests = CreateQuestOptions(),
             gossip = CreateGossipOptions(),
             containers = CreateContainerOptions(),
@@ -1391,6 +1496,9 @@ local function EnsureRegistered()
         uiCache.blizzFrames["JustQuest-Quests"] = ACD:AddToBlizOptions("JustQuest", "Quests", "JustQuest", "quests")
         uiCache.blizzFrames["JustQuest-Gossip"] = ACD:AddToBlizOptions("JustQuest", "NPCs", "JustQuest", "gossip")
         uiCache.blizzFrames["JustQuest-Gear"] = ACD:AddToBlizOptions("JustQuest", "Gear", "JustQuest", "gear")
+        -- Previously unreachable from the Blizzard panel: the delve options existed only
+        -- behind /jq config. Added here so instance automation is discoverable at all.
+        uiCache.blizzFrames["JustQuest-Instances"] = ACD:AddToBlizOptions("JustQuest", "Instances", "JustQuest", "instances")
         uiCache.blizzFrames["JustQuest-Containers"] = ACD:AddToBlizOptions("JustQuest", "Containers", "JustQuest", "containers")
         uiCache.blizzFrames["JustQuest-Advanced"] = ACD:AddToBlizOptions("JustQuest", "Advanced", "JustQuest", "advanced")
 

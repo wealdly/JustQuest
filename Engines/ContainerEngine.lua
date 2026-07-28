@@ -3,10 +3,6 @@
 local ADDON_NAME, JustQuest = ...
 
 local DANGEROUS_CONTAINERS = JustQuest.Database.DANGEROUS_CONTAINERS
--- DB2-generated (ContainerData.lua): items with ITEM_FLAG_OPENABLE, split by LockID. Only a
--- FALLBACK — the live info.hasLoot read is primary (see ShouldOpen).
-local OPENABLE_CONTAINERS = JustQuest.Database.OPENABLE_CONTAINERS  -- free-open (LockID == 0)
-local LOCKED_CONTAINERS   = JustQuest.Database.LOCKED_CONTAINERS    -- lockboxes (LockID != 0)
 
 local PICK_LOCK_SPELL = 1804  -- Rogue "Pick Lock"
 
@@ -83,10 +79,11 @@ end
 
 -- Whether to auto-open this bag item. PRIMARY signal is the LIVE ContainerItemInfo:
 -- info.hasLoot is the runtime ITEM_FLAG_OPENABLE ("right-click to open") and info.isLocked
--- separates free-open containers from lockboxes — so the normal path needs no item DB and is
--- always current. FALLBACK: if the live flag can't be read (unexpected nil / secret value),
--- use the generated ContainerData.lua list by itemID (regenerate via tools/gen_containers.py).
--- Either way, the isLocked branch in ProcessContainerItem still gates lockboxes at runtime.
+-- separates free-open containers from lockboxes — so this needs no item DB and is always
+-- current. Both are declared Nilable = false on ContainerItemInfo, so there is no "flag
+-- unreadable" case to fall back from; a generated item list used to sit here for that and was
+-- unreachable dead weight (2,275 lines) built from the very same flag it was backing up.
+-- The isLocked branch in ProcessContainerItem still gates lockboxes at runtime.
 local function ShouldOpen(info)
     local itemID = info.itemID
     -- User whitelist forces open — covers loot bags that open via an on-use spell (no flag).
@@ -105,16 +102,9 @@ local function ShouldOpen(info)
     local classID = select(6, C_Item.GetItemInfoInstant(itemID))
     if classID == JustQuest.Constants.ITEM_CLASS.QUESTITEM then return false end
 
-    if type(info.hasLoot) == "boolean" then
-        if not info.hasLoot then return false end          -- not an openable container
-        if mode == "safe" then return not info.isLocked end  -- free-open only; lockboxes wait
-        return true                                          -- "all": free-open + lockboxes
-    end
-
-    -- Fallback: live flag unreadable — use the baked list.
-    if OPENABLE_CONTAINERS and OPENABLE_CONTAINERS[itemID] then return true end
-    if mode == "all" and LOCKED_CONTAINERS and LOCKED_CONTAINERS[itemID] then return true end
-    return false
+    if not info.hasLoot then return false end            -- not an openable container
+    if mode == "safe" then return not info.isLocked end  -- free-open only; lockboxes wait
+    return true                                          -- "all": free-open + lockboxes
 end
 
 local function IsDangerousContainer(itemID)

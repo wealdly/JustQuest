@@ -1,10 +1,16 @@
 -- ContainerDB.lua — built-in "never auto-open" blacklist for the container engine.
 --
--- Openable containers are detected LIVE at runtime (C_Container.GetContainerItemInfo →
--- info.hasLoot / info.isLocked), with tools/gen_containers.py → Database/ContainerData.lua as
--- an offline fallback. There is no hand-maintained "safe list" here anymore — only the small
--- blacklist below: a belt-and-suspenders default over the live flag check for items that can
--- look openable but shouldn't be auto-opened. Players add their own via /jq container block.
+-- Openable containers are detected LIVE at runtime: C_Container.GetContainerItemInfo returns
+-- info.hasLoot (the runtime ITEM_FLAG_OPENABLE — "right-click to open", set by the game on
+-- every item that opens to give loot and on nothing else) and info.isLocked (lockbox). Both are
+-- Nilable = false, so the read never fails and no offline item list is needed. One used to sit
+-- here as a "fallback" and was unreachable: it was generated from ItemSparse.Flags_0 & 0x4,
+-- i.e. a stale copy of the very flag it was backing up, so it could never know anything the
+-- live read did not.
+--
+-- What remains is the small blacklist below — a belt-and-suspenders default over the live flag
+-- for items that look openable but shouldn't be auto-opened, which is NOT derivable from the
+-- flag. Players add their own via /jq container block.
 --
 -- Prior art that informed JustQuest's container automation (thanks to Gogo#0298 &
 -- TechnoHunter#2706 and these addons): Open Sesame!, Auto Open Items, AutoClam, AutoOpen,

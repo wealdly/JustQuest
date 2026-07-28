@@ -386,6 +386,159 @@ end
 -- Frame Inspection
 -- ============================================================
 
+-- ============================================================
+-- Window probe (diagnostic)
+-- ============================================================
+-- Dumps every interactive window currently on screen. Built for the entrance flow — walk up to
+-- a portal, let the window appear, run /jq probe — so that automating it starts from what the
+-- frames actually are rather than from an assumption about them. Every read is guarded: these
+-- are Blizzard's internals and they move.
+
+local function probeBool(v)
+    if v == nil then return "|cff888888nil|r" end
+    if v == true then return "|cff00ff00true|r" end
+    if v == false then return "|cffff6666false|r" end
+    return tostring(v)
+end
+
+-- `ok and v or nil` is wrong here and was actively misleading: a legitimate `false` collapses to
+-- nil, so a deliberately DISABLED button read as "the API isn't there". Return the value as-is.
+local function probeCall(fn, ...)
+    if not fn then return nil end
+    local ok, v = pcall(fn, ...)
+    if not ok then return nil end
+    return v
+end
+
+-- Recursive widget walk. GetChildren returns MANY values, so the vararg must be packed —
+-- capturing it as `local ok, v = pcall(...)` keeps only the first child and silently reports
+-- an empty window.
+local function probeChildren(node)
+    local ok, kids = pcall(function() return { node:GetChildren() } end)
+    return ok and kids or {}
+end
+
+local function probeButtons(root, indent, depth, budget)
+    if depth > 4 or budget.n > 40 then return end
+    for _, kid in ipairs(probeChildren(root)) do
+        if type(kid) == "table" then
+            local isButton = kid.Click and kid.GetButtonState
+            if isButton then
+                budget.n = budget.n + 1
+                print(("%s|cff33ccffbutton|r %q shown=%s enabled=%s"):format(
+                    indent, tostring(probeCall(kid.GetText, kid)),
+                    probeBool(probeCall(kid.IsShown, kid)), probeBool(probeCall(kid.IsEnabled, kid))))
+            end
+            probeButtons(kid, indent .. "  ", depth + 1, budget)
+        end
+    end
+end
+
+-- The Torghast level picker is a gossip frame whose options ARE the layers, so the useful data
+-- is the gossip option list plus the picker's own selection bookkeeping.
+local function probeTorghastPicker(f)
+    print(("  |cffffcc00selection:|r currentIndex=%s highestAvailable=%s maxPerPage=%s partyLeader=%s"):format(
+        probeBool(rawget(f, "currentSelectedButtonIndex")), probeBool(rawget(f, "highestAvailableLayerIndex")),
+        probeBool(rawget(f, "maxOptionsPerPage")), probeBool(rawget(f, "isPartyLeader"))))
+    print(("  |cffffcc00IsPartyInJailersTower:|r %s"):format(
+        probeBool(probeCall(C_PartyInfo and C_PartyInfo.IsPartyInJailersTower))))
+
+    local opts = rawget(f, "gossipOptions") or probeCall(C_GossipInfo and C_GossipInfo.GetOptions)
+    if type(opts) == "table" then
+        local names = {}
+        if Enum and Enum.GossipOptionStatus then
+            for k, v in pairs(Enum.GossipOptionStatus) do names[v] = k end
+        end
+        print(("  |cffffcc00layers:|r %d"):format(#opts))
+        for i, o in ipairs(opts) do
+            print(("     %d. %q status=%s(%s) orderIndex=%s gossipOptionID=%s"):format(
+                i, tostring(o.name), tostring(names[o.status] or "?"), tostring(o.status),
+                tostring(o.orderIndex), tostring(o.gossipOptionID)))
+        end
+    end
+
+    -- The layer buttons come from a frame pool built during layout. "options=16" with an empty
+    -- pool means the data is there but the widgets are not yet, which is a different problem
+    -- from having no data at all.
+    local pool = rawget(f, "gossipOptionsPool")
+    local indices, n = {}, 0
+    if pool then
+        pcall(function()
+            for layer in pool:EnumerateActive() do
+                n = n + 1
+                indices[#indices + 1] = tostring(rawget(layer, "index"))
+            end
+        end)
+    end
+    print(("  |cffffcc00layer buttons:|r pool=%s active=%d [%s]"):format(
+        pool and "present" or "|cffff6666absent|r", n, table.concat(indices, ",")))
+
+    local portal = rawget(f, "OpenPortalButton")
+    if portal then
+        print(("  |cffffcc00OpenPortalButton:|r shown=%s enabled=%s text=%q"):format(
+            probeBool(probeCall(portal.IsShown, portal)), probeBool(probeCall(portal.IsEnabled, portal)),
+            tostring(probeCall(portal.GetText, portal))))
+    else
+        print("  |cff888888OpenPortalButton absent|r")
+    end
+end
+
+-- Named candidates, in the order they turn up when entering instance content.
+local PROBE_FRAMES = {
+    "TorghastLevelPickerFrame", "DelvesDifficultyPickerFrame", "GossipFrame",
+    "PlayerChoiceFrame", "LFGDungeonReadyPopup", "LFGDungeonReadyDialog",
+    "QuestFrame", "SplashFrame", "ScenarioFinderFrame",
+}
+
+function Config.ProbeWindows()
+    print("|cff00ccff========== JustQuest window probe ==========|r")
+
+    -- Our own state first. A window that "did nothing" is usually a toggle that is off, and
+    -- reading that off the dump beats inferring it from what didn't happen.
+    local delveMod = JustQuest.Core.GetModule("DelveEngine")
+    if delveMod and delveMod.GetEntranceState then
+        local s = delveMod.GetEntranceState()
+        print(("|cffffcc00JustQuest:|r autoClimb=%s"):format(probeBool(s.autoClimb)))
+        if not s.autoClimb then
+            print("  |cff888888auto-climb is off — /jq torghast climb|r")
+        end
+    end
+
+    local any = false
+
+    for _, name in ipairs(PROBE_FRAMES) do
+        local f = _G[name]
+        if f and probeCall(f.IsShown, f) then
+            any = true
+            print(("|cff33ff33%s|r  alpha=%s"):format(name, probeBool(probeCall(f.GetAlpha, f))))
+            if name == "TorghastLevelPickerFrame" then probeTorghastPicker(f) end
+            if name == "PlayerChoiceFrame" then
+                local delve = JustQuest.Core.GetModule("DelveEngine")
+                if delve and delve.DumpFrame then delve.DumpFrame() end
+            end
+            probeButtons(f, "     ", 0, { n = 0 })
+        end
+    end
+
+    -- StaticPopups carry the "your instance is ready" style prompts; `which` names the template.
+    for i = 1, 4 do
+        local p = _G["StaticPopup" .. i]
+        if p and probeCall(p.IsShown, p) then
+            any = true
+            local txt = _G["StaticPopup" .. i .. "Text"]
+            print(("|cff33ff33StaticPopup%d|r which=%s"):format(i, tostring(rawget(p, "which"))))
+            if txt then print(("     text=%q"):format(tostring(probeCall(txt.GetText, txt)))) end
+            probeButtons(p, "     ", 0, { n = 0 })
+        end
+    end
+
+    if not any then
+        print("  |cff888888nothing on screen from the candidate list|r")
+        print("  |cff888888walk up to the portal, let the window appear, then run this again|r")
+    end
+    print("|cff00ccff===========================================|r")
+end
+
 function Config.InspectCurrentFrame()
     print("|cff00ccff========== JustQuest Frame Inspector ==========|r")
     
@@ -471,21 +624,42 @@ function Config.InspectCurrentFrame()
         
         if #options > 0 then
             local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
+            local gossipEngine = JustQuest.Core.GetModule("GossipEngine")
+
+            -- Menu-level state first: which branch runs at all. A service that won't fire is
+            -- more often explained by this than by anything about the option itself.
+            if gossipEngine and gossipEngine.ExplainMenu then
+                local menu = gossipEngine.ExplainMenu()
+                local notes = {}
+                if menu.concluded then notes[#notes + 1] = "|cffffcc00conversation already dead-ended (chatter probe retired; services still run)|r" end
+                if menu.forceGossip then notes[#notes + 1] = "|cffff6666ForceGossip — the server wants this shown, nothing auto-selects|r" end
+                if menu.groupedInstance then notes[#notes + 1] = "|cffffcc00grouped inside an instance (chatter probe stood down — a dialog option here can start an encounter; services and quests still run)|r" end
+                print("|cffffcc00Menu state:|r chain depth " .. tostring(menu.chainDepth)
+                      .. (#notes > 0 and ("\n    " .. table.concat(notes, "\n    ")) or " |cff888888(clear)|r"))
+            end
+
             for i, option in ipairs(options) do
                 local available = safetyEngine and safetyEngine.OptionIsAvailable(option) or true
                 local isBlacklisted = safetyEngine and safetyEngine.IsBlacklisted(option) or false
-                
+
                 local status = available and "|cff00ff00✓|r" or "|cffff6666✗|r"
                 local flags = ""
                 if isBlacklisted then flags = flags .. " |cffff0000[BLACKLISTED]|r" end
-                
+
                 local autoSelect = option.selectOptionWhenOnlyOption
                 if autoSelect == false then flags = flags .. " |cffffaa00[NO-AUTOSELECT]|r" end
 
                 local optionType = option.type and (" |cff888888(type:" .. option.type .. ")|r") or ""
                 local icon = option.icon and (" icon:" .. option.icon) or ""
-                
+                if option.overrideIconID then icon = icon .. "/override:" .. option.overrideIconID end
+
                 print("    " .. status .. " " .. i .. ". " .. (option.name or "Unknown") .. optionType .. icon .. flags)
+                -- The engine's own verdict. Service detection is heuristic (there is no per-option
+                -- service type in the API), so this is the line that says whether a vendor was
+                -- actually recognised as one.
+                if gossipEngine and gossipEngine.ExplainOption then
+                    print("       |cff888888-> " .. gossipEngine.ExplainOption(option) .. "|r")
+                end
                 if option.gossipOptionID then
                     print("       |cff888888ID: " .. option.gossipOptionID .. "|r")
                 end
@@ -591,6 +765,13 @@ local function HandleSlashCommand(msg)
         print("  |cff00ff00/jq gear [on|off]|r - Auto-swap gear on spec change")
         print("  |cff00ff00/jq gear smart|full|r - Swap weapons/trinkets/rings, or all gear")
         print("")
+        print("|cffffcc00Instances:|r")
+        print("  |cff00ff00/jq delve [on|off|check]|r - Auto-take delve powers")
+        print("  |cff00ff00/jq torghast [on|off|check]|r - Auto-select anima powers")
+        print("  |cff00ff00/jq torghast normal|farming|r - Pick for clearing, or for speed")
+        print("  |cff00ff00/jq torghast probe|r - Dump the next power window (selects nothing)")
+        print("  |cff00ff00/jq torghast frame|r - Dump the player-choice frame widgets now")
+        print("")
         print("|cffffcc00Container Management:|r")
         print("  |cff00ff00Shift-Click|r in config UI - Add container to whitelist (easiest!)")
         print("  |cff00ff00/jq container add <itemID>|r - Add to whitelist")
@@ -601,6 +782,7 @@ local function HandleSlashCommand(msg)
         print("")
         print("|cff888888Utility:|r")
         print("  |cff00ff00/jq inspect|r - Inspect current NPC/quest frame")
+        print("  |cff00ff00/jq probe|r - Dump any window on screen (portals, popups, pickers)")
         print("  |cff00ff00/jql|r - Leave instance/party")
         print("")
         print("|cffffaa00Tip:|r Open config UI (|cff00ff00/jq config|r), click 'Add Item ID', then Shift-Click containers!")
@@ -650,6 +832,14 @@ local function HandleSlashCommand(msg)
     -- Inspect current NPC/quest frame
     if cmd == "inspect" then
         Config.InspectCurrentFrame()
+        return
+    end
+
+    -- Dump whatever window is on screen. Meant to be run at the moment a window appears —
+    -- approaching a portal, an instance-ready prompt — so automation is written against the
+    -- real frame rather than a guess about it.
+    if cmd == "probe" then
+        Config.ProbeWindows()
         return
     end
     
@@ -737,6 +927,88 @@ local function HandleSlashCommand(msg)
                   .. ", go straight in: " .. tostring(Config.Get("delve", "autoEnter")) .. ")")
         else
             print("|cffff6666Usage:|r /jq delve [on|off|check]")
+        end
+        return
+    end
+
+    -- Torghast-style anima power selection.
+    if cmd == "torghast" or cmd == "tg" then
+        local sub = (rest and strsplit(" ", rest):lower()) or ""
+        if sub == "on" or sub == "off" or sub == "" then
+            local value
+            if sub == "" then
+                value = not Config.Get("torghast", "autoSelectPower")
+            else
+                value = (sub == "on")
+            end
+            Config.Set("torghast", "autoSelectPower", value)
+            print("|cff00ccffJustQuest:|r Anima power auto-select " .. (value and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
+        elseif sub == "frame" then
+            local delve = JustQuest.Core.GetModule("DelveEngine")
+            if delve and delve.DumpFrame then
+                print("|cff00ccff===== JustQuest player-choice frame =====|r")
+                delve.DumpFrame()
+                print("|cff00ccff=========================================|r")
+            else
+                print("|cffff6666JustQuest:|r DelveEngine unavailable")
+            end
+        elseif sub == "probe" then
+            local delve = JustQuest.Core.GetModule("DelveEngine")
+            if delve and delve.ArmProbe then
+                delve.ArmProbe()
+            else
+                print("|cffff6666JustQuest:|r DelveEngine unavailable")
+            end
+        elseif sub == "climb" then
+            local value = not Config.Get("torghast", "autoClimb")
+            Config.Set("torghast", "autoClimb", value)
+            print("|cff00ccffJustQuest:|r Auto-climb (highest layer) " .. (value and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
+        elseif sub == "normal" or sub == "farming" then
+            Config.Set("torghast", "mode", sub)
+            print("|cff00ccffJustQuest:|r Picking for " .. (sub == "farming" and "farming" or "clearing"))
+        elseif sub == "check" or sub == "status" then
+            -- The texture kit is the whole gate, and it can only be seen with a choice open.
+            -- Printing it is how you confirm the gate fires here, and how you find out what
+            -- kit other content (delve curios, evergreen power choices) actually uses.
+            local kit
+            if C_PlayerChoice and C_PlayerChoice.GetCurrentPlayerChoiceInfo then
+                local ok, info = pcall(C_PlayerChoice.GetCurrentPlayerChoiceInfo)
+                if ok and info then kit = info.uiTextureKit end
+            end
+            print("|cff00ccffJustQuest:|r auto-select powers: " .. tostring(Config.Get("torghast", "autoSelectPower"))
+                  .. " (picking for " .. tostring(Config.Get("torghast", "mode"))
+                  .. ", auto-reroll: " .. tostring(Config.Get("torghast", "autoReroll")) .. ")")
+            if kit then
+                local scored = (kit == "jailerstower")
+                print("  choice on screen uses kit: |cffffd100" .. kit .. "|r "
+                      .. (scored and "|cff00ff00(scored)|r" or "|cff888888(not scored — left to you)|r"))
+                -- Rarity and type both come free in the payload and both feed scoring. The type
+                -- art IDs were read from the game's file listing rather than observed in play,
+                -- so printing them here is how they get confirmed.
+                local TYPES = { [3446882] = "offense", [3446881] = "defense", [3446883] = "utility" }
+                local RARITY = { [0] = "Common", [1] = "Uncommon", [2] = "Rare", [3] = "Epic" }
+                local ok2, info2 = pcall(C_PlayerChoice.GetCurrentPlayerChoiceInfo)
+                -- Choice-level flags. Both of these have names that read like "don't touch this"
+                -- and mean something narrower: requiresSelection only removes the close button,
+                -- and the waiting flag is true whenever a choice is simply open. Printed because
+                -- misreading either one silently disables the whole feature.
+                if ok2 and info2 then
+                    local waiting = select(2, pcall(C_PlayerChoice.IsWaitingForPlayerChoiceResponse))
+                    print(("    |cff888888choiceID=%s requiresSelection=%s (modal only) waitingForPlayer=%s|r"):format(
+                        tostring(info2.choiceID), tostring(info2.requiresSelection), tostring(waiting)))
+                end
+                for i, opt in ipairs((ok2 and info2 and info2.options) or {}) do
+                    print(("    %d. %s |cff888888rarity=%s type=%s spellID=%s|r"):format(
+                        i, tostring(opt.header),
+                        RARITY[opt.rarity] or tostring(opt.rarity),
+                        TYPES[opt.typeArtID] or ("?" .. tostring(opt.typeArtID)),
+                        tostring(opt.spellID)))
+                end
+            else
+                print("  no choice on screen — run this with a power window open to see its kit")
+            end
+        else
+            print("|cffff6666Usage:|r /jq torghast [on|off|normal|farming|climb|check|probe|frame]")
         end
         return
     end

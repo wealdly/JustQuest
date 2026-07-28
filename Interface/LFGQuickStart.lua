@@ -338,12 +338,20 @@ local function PrepareQuickExitOnMouseDown()
         return FailQuickExit("DOWN_INIT", "Blocked by combat lockdown", "Exit blocked in combat.")
     end
 
-    local inInstance = IsInInstance()
-    PrintQuickExitDebug("DOWN_STATE", string.format("inInstance=%s inGroup=%s groupSize=%d",
-        tostring(inInstance), tostring(IsInGroup() or IsInRaid()), GetNumGroupMembers() or 0))
+    local inInstance, instanceType = IsInInstance()
+    PrintQuickExitDebug("DOWN_STATE", string.format("inInstance=%s type=%s inGroup=%s groupSize=%d",
+        tostring(inInstance), tostring(instanceType), tostring(IsInGroup() or IsInRaid()), GetNumGroupMembers() or 0))
 
     if not inInstance then
         return FailQuickExit("DOWN_STATE", "Not in an instance", "Exit unavailable outside an instance.")
+    end
+
+    -- Checked HERE, not only via LeaveInstance: a refusal there falls through to the listing
+    -- fallback below, whose whole job is to leave the party — which in a battleground is
+    -- precisely the deserter debuff the refusal exists to prevent.
+    if instanceType == "pvp" or instanceType == "arena" then
+        return FailQuickExit("DOWN_STATE", "PvP instance (" .. tostring(instanceType) .. ")",
+            "Exit unavailable in a battleground or arena.")
     end
 
     -- 1. Direct exit: LFG teleport, grouped leave, solo party leave
@@ -491,8 +499,14 @@ local function ShouldShowQuickExitButton()
         return false
     end
 
-    local inInstance = IsInInstance()
+    local inInstance, instanceType = IsInInstance()
     if not inInstance then
+        return false
+    end
+
+    -- Services.LeaveInstance refuses these outright (deserter debuff / forfeited match), so
+    -- don't offer a button that can only fail — and whose tooltip promises an immediate exit.
+    if instanceType == "pvp" or instanceType == "arena" then
         return false
     end
 

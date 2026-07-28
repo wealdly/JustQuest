@@ -29,7 +29,7 @@ Services\PawnStatInjection.lua
 # Database Tables
 Database\BlockedContent.lua
 Database\ContainerDB.lua
-Database\ContainerData.lua
+Database\AnimaPowerDB.lua
 
 # Processing Engines
 Engines\SafetyEngine.lua
@@ -43,5 +43,6 @@ Engines\GearAdvisor.lua
 # User Interface
 Interface\ConfigUI.lua
 Interface\AutomationIndicator.lua
+Interface\GossipFooter.lua
 Interface\GearToast.lua
 Interface\LFGQuickStart.lua

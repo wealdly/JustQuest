@@ -177,6 +177,14 @@ JustQuest.Constants.DEFAULTS = {
                 "travel back in time",
                 "travel to the past",
                 "travel to another",
+                -- Instanced-content commitments: a dialog option that puts you INSIDE
+                -- something, at a difficulty you didn't pick. The delve difficulty picker
+                -- gets a frame-level guard (Constants.INTERFERING_FRAMES) because it is a
+                -- custom frame; these are plain gossip menus with the same consequence.
+                -- ponytail: matched by boss name, which is as locale-stable as gossip text
+                -- gets. If a menu slips through, add its wording here — there is no
+                -- server-side flag for "this option enters instanced content".
+                "zekvir",
                 -- Story / campaign skips (permanent choices)
                 "i have heard this tale before",
                 "i have heard this story before",
@@ -216,6 +224,18 @@ JustQuest.Constants.DEFAULTS = {
             autoTier = false,        -- auto-pick a tier when the delve picker opens
             preferredTier = 1,       -- which tier (1-11) autoTier selects
             autoEnter = false,       -- enter the delve after autoTier picks (autoTier only)
+        },
+
+        -- Torghast-style anima power choices. Kept a sibling of `delve` rather than nested
+        -- under a shared "instance" table: the options UI groups them together, but storage
+        -- doesn't have to mirror the UI, and renaming live saved keys would force a profile
+        -- migration for zero user benefit.
+        torghast = {
+            autoSelectPower = false, -- score the offered powers and take the best
+            hidePowerFrame = true,   -- hide the power popup while auto-selecting
+            mode = "normal",         -- "normal" (clearing) or "farming" (speed + Phantasma)
+            autoReroll = false,      -- spend a reroll when nothing on offer clears the floor
+            autoClimb = false,       -- at the wayfinder: pick the highest available layer
         },
 
         lfgQuickExit = {
@@ -270,6 +290,10 @@ JustQuest.Constants.INTERFERING_FRAMES = {
     "PVPMatchScoreboard",
     "CommunitiesFrame",
     "WarboardQuestChoiceFrame",
+    -- Picking a timeline changes which expansion's world you level in. Reached from a gossip
+    -- option whose wording none of the travel keywords below match, so the frame itself is
+    -- the reliable guard.
+    "ChromieTimeFrame",
     -- The delve difficulty picker is a gossip frame whose options ARE the tiers, and
     -- selecting one enters the delve. Traversing it the way we traverse a dialog menu
     -- would drop the player into a delve at whatever tier came first. Hands off: only

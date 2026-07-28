@@ -723,13 +723,27 @@ local function DispatchContent(reason)
         -- condition. One close per second per interaction is plenty for tidying up, and
         -- caps the thrash if the server disagrees with us about the menu being over.
         local config = JustQuest.Core.GetModule("Config")
-        if config and config.Get(nil, "fastMode")
-           and GossipFrame and GossipFrame:IsShown()
-           and C_GossipInfo and C_GossipInfo.CloseGossip
-           and (GetTime() - (Services._lastFlavorClose or 0)) > FLAVOR_CLOSE_THROTTLE then
-            Services.Debug("Services", "Fast mode: auto-closing flavor gossip (no options)")
-            Services._lastFlavorClose = GetTime()
-            Services.SafeCall(C_GossipInfo.CloseGossip)
+        if GossipFrame and GossipFrame:IsShown() then
+            -- Either way this page is a dead end — tell GossipEngine so a re-click at
+            -- this NPC shows the menu immediately instead of re-running the walk.
+            local gossipEngine = JustQuest.Core.GetModule("GossipEngine")
+            if gossipEngine and gossipEngine.MarkConversationConcluded then
+                gossipEngine.MarkConversationConcluded()
+            end
+            if config and config.Get(nil, "fastMode") then
+                if C_GossipInfo and C_GossipInfo.CloseGossip
+                   and (GetTime() - (Services._lastFlavorClose or 0)) > FLAVOR_CLOSE_THROTTLE then
+                    Services.Debug("Services", "Fast mode: auto-closing flavor gossip (no options)")
+                    Services._lastFlavorClose = GetTime()
+                    Services.SafeCall(C_GossipInfo.CloseGossip)
+                end
+            else
+                -- Page stays open for reading — say why nothing is happening.
+                local footer = JustQuest.Core.GetModule("GossipFooter")
+                if footer then
+                    footer.SetNote("Nothing to automate")
+                end
+            end
         end
         return false
     end
@@ -894,7 +908,17 @@ function Services.LeaveInstance()
     
     local inGroup = IsInGroup() or IsInRaid()
     local instanceName, instanceType, difficultyID, difficultyName = GetInstanceInfo()
-    
+
+    -- A battleground or arena is an instance, but leaving one is not "exiting an instance".
+    -- You are in a raid group in a battleground, so the grouped path below would fire
+    -- LeaveParty and hand you a deserter debuff; in an arena it forfeits the match for your
+    -- team. Refused here rather than at the button, because every caller — the Exit button,
+    -- /jq, anything later — routes through this one function.
+    if instanceType == "pvp" or instanceType == "arena" then
+        Services.Debug("Instance", "Refusing to leave " .. tostring(instanceType) .. " content")
+        return false, "Leaving a battleground or arena is yours to do (deserter / forfeit)"
+    end
+
     Services.Debug("Instance", string.format("Leave attempt - %s (%s), Difficulty: %s (%d), InGroup: %s", 
         tostring(instanceName), tostring(instanceType), tostring(difficultyName), tostring(difficultyID), tostring(inGroup)))
 
