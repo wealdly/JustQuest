@@ -352,6 +352,109 @@ function GameData.ItemFailsARequirement(itemLink)
     return false
 end
 
+-- The armour type each class is meant to wear. Proficiency is NOT the same question:
+-- a druid can physically equip cloth, so nothing about the item or the tooltip marks it
+-- as wrong — a stat scorer sees only stats, and a high-stat cloth chest beats the leather
+-- one on paper while costing the class its armour-specialization bonus. There is no API
+-- for this (the client never exposes a class's armour type), so it is a table; it changes
+-- only when a class is added.
+--
+-- Keyed by the locale-independent class token from UnitClass, not the numeric ID.
+local CLASS_ARMOR_SUBCLASS  -- built on first use: Enum isn't guaranteed at file scope
+local function ClassArmorSubclass()
+    if CLASS_ARMOR_SUBCLASS then return CLASS_ARMOR_SUBCLASS end
+    local sub = (Enum and Enum.ItemArmorSubclass) or {}
+    local CLOTH, LEATHER = sub.Cloth or 1, sub.Leather or 2
+    local MAIL,  PLATE   = sub.Mail  or 3, sub.Plate   or 4
+    CLASS_ARMOR_SUBCLASS = {
+        WARRIOR = PLATE,   PALADIN = PLATE,   DEATHKNIGHT = PLATE,
+        HUNTER  = MAIL,    SHAMAN  = MAIL,    EVOKER      = MAIL,
+        ROGUE   = LEATHER, DRUID   = LEATHER, MONK        = LEATHER,
+        DEMONHUNTER = LEATHER,
+        PRIEST  = CLOTH,   MAGE    = CLOTH,   WARLOCK     = CLOTH,
+    }
+    return CLASS_ARMOR_SUBCLASS
+end
+
+-- Only the slots that HAVE a class armour type. A cloak is Cloth-subclass for every
+-- class alive, and necks/rings/trinkets/off-hand frills are Generic or Miscellaneous —
+-- filtering any of those by armour type would hide gear everyone is supposed to wear.
+local ARMOR_TYPED_SLOTS = {
+    INVTYPE_HEAD = true, INVTYPE_SHOULDER = true, INVTYPE_CHEST = true,
+    INVTYPE_ROBE = true, INVTYPE_WAIST = true,    INVTYPE_LEGS  = true,
+    INVTYPE_FEET = true, INVTYPE_WRIST = true,    INVTYPE_HAND  = true,
+}
+
+-- True when this is body armour of an armour type the player's class is not meant to
+-- wear. Anything unreadable or unrecognised (a new class token, a non-armour item)
+-- answers false: the failure direction has to be "don't filter", or a client change
+-- silently hides every upgrade the player owns.
+function GameData.ItemIsWrongArmorType(itemLink)
+    if not itemLink then return false end
+
+    local ok, _, _, _, invType, _, classID, subclassID = pcall(C_Item.GetItemInfoInstant, itemLink)
+    if not ok then return false end
+    if classID ~= JustQuest.Constants.ITEM_CLASS.ARMOR then return false end
+    if not ARMOR_TYPED_SLOTS[invType] then return false end
+
+    local want = ClassArmorSubclass()[GameData.GetPlayerClass()]
+    if not want then return false end
+
+    return subclassID ~= want
+end
+
+-- The item stat each primary stat is named by. Built on first use: the LE_UNIT_STAT globals
+-- are not guaranteed to exist at file scope. Stats come back keyed by the game's own
+-- ITEM_MOD_* global names, the same keys the advisor's stat-delta line reads.
+local PRIMARY_STAT_KEY
+local function PrimaryStatKey()
+    if PRIMARY_STAT_KEY then return PRIMARY_STAT_KEY end
+    PRIMARY_STAT_KEY = {
+        [LE_UNIT_STAT_STRENGTH  or 1] = "ITEM_MOD_STRENGTH_SHORT",
+        [LE_UNIT_STAT_AGILITY   or 2] = "ITEM_MOD_AGILITY_SHORT",
+        [LE_UNIT_STAT_INTELLECT or 4] = "ITEM_MOD_INTELLECT_SHORT",
+    }
+    return PRIMARY_STAT_KEY
+end
+
+-- True when the item carries a primary stat that isn't the one the player's spec runs on —
+-- the Agility spear in a Restoration druid's bag. Nothing else catches it: the item is legal
+-- to equip, it has no armour type to be wrong about, and the tooltip shows no red text, so a
+-- scorer reading raw stats sees a big number and calls it an upgrade.
+--
+-- Every unknown answers false, and so does an item with NO primary stat at all — cloaks,
+-- necks and rings often have none, and filtering those would hide gear every spec wears. The
+-- failure direction has to be "don't filter": a wrong verdict here hides real upgrades.
+function GameData.ItemIsWrongPrimaryStat(itemLink)
+    if not itemLink then return false end
+
+    -- No spec chosen yet (levelling, before the class picks one) means no opinion to have.
+    local specIndex = GetSpecialization and GetSpecialization()
+    if not specIndex then return false end
+
+    local getInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
+                    or GetSpecializationInfo
+    if not getInfo then return false end
+    -- primaryStat is Nilable, and 0 for a spec that has none.
+    local ok, _, _, _, _, _, primaryStat = pcall(getInfo, specIndex)
+    if not (ok and primaryStat and primaryStat ~= 0) then return false end
+
+    local want = PrimaryStatKey()[primaryStat]
+    if not want then return false end
+
+    local okStats, stats = pcall(C_Item.GetItemStats, itemLink)
+    if not (okStats and type(stats) == "table") then return false end  -- not cached yet
+
+    if stats[want] then return false end  -- carries ours; nothing to say
+
+    -- Only wrong if it actually carries one of the OTHER primary stats. An item with none
+    -- reaches here too, and must pass.
+    for _, key in pairs(PrimaryStatKey()) do
+        if key ~= want and stats[key] then return true end
+    end
+    return false
+end
+
 function GameData.CanPlayerUseItem(itemLink)
     if not itemLink then return false end
     if GameData.ItemFailsARequirement(itemLink) then return false end

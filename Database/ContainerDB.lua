@@ -2,8 +2,8 @@
 --
 -- Openable containers are detected LIVE at runtime: C_Container.GetContainerItemInfo returns
 -- info.hasLoot (the runtime ITEM_FLAG_OPENABLE — "right-click to open", set by the game on
--- every item that opens to give loot and on nothing else) and info.isLocked (lockbox). Both are
--- Nilable = false, so the read never fails and no offline item list is needed. One used to sit
+-- every item that opens to give loot and on nothing else). It is Nilable = false, so the read
+-- never fails and no offline item list is needed. One used to sit
 -- here as a "fallback" and was unreachable: it was generated from ItemSparse.Flags_0 & 0x4,
 -- i.e. a stale copy of the very flag it was backing up, so it could never know anything the
 -- live read did not.

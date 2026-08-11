@@ -92,7 +92,7 @@ function Config.Set(module, key, value)
         end
     end
     
-    if module == "containers" and (key == "whitelist" or key == "blacklist" or key == "enabled" or key == "mode" or key == "rogueAutoPick") then
+    if module == "containers" and (key == "whitelist" or key == "blacklist" or key == "enabled" or key == "mode") then
         local containerEngine = JustQuest.Core.GetModule("ContainerEngine")
         if containerEngine and containerEngine.RefreshConfigCache then
             containerEngine.RefreshConfigCache()
@@ -1066,8 +1066,7 @@ local function HandleSlashCommand(msg)
             
             local modeLabels = {
                 list = "My list only",
-                safe = "Safe containers (clams, chests, coin sacks)",
-                all  = "Everything openable (incl. lockboxes)",
+                safe = "Openable containers (clams, chests, coin sacks)",
             }
             local mode = Config.Get("containers", "mode") or "safe"
             print("|cff888888Auto-open mode: |cff00ff00" .. (modeLabels[mode] or mode) .. "|r|r")

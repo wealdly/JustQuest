@@ -8,6 +8,10 @@
 --   * on spec change: reminds you of the best gear for the new spec ("switch to your
 --     intellect staff") and, in auto-equip mode, equips it.
 --
+-- With no Pawn scale for the spec — or no Pawn at all — it falls back to item level, behind the
+-- same usability / armour-type / primary-stat gates (see ScoreByItemLevel). Crude, and the
+-- prompt says so, but the alternative is silence that reads as "you have no upgrades".
+--
 -- Trinkets are out of scope — Pawn can't score them, so the advisor never touches them.
 -- Unique-equipped items are respected: a recommendation is dropped if wearing it would
 -- exceed its unique constraint (you already wear it, or the max of a named set).
@@ -58,6 +62,33 @@ local pendingManual   = false  -- carry the manual (player-clicked) intent acros
 local promptedID
 local lastFingerprint          -- equippable bag contents at the last scored scan
 local forceNext       = false  -- score the next scan even if the bags look unchanged
+
+-- A travel item — a teleport cloak, a port trinket — is a downgrade on paper: Pawn scores stats
+-- and a teleport has none. So the instant one goes on, the scan wants the real piece back, which
+-- means a prompt while you are still reaching for the right-click and, in auto-equip mode, the
+-- cloak coming off before you can use it at all. That last one isn't just noise: these items
+-- only function from an equipped slot, so pulling it off IS cancelling the trip.
+--
+-- Hence a hold, started by putting on anything with a Use: effect and extended for as long as a
+-- cast is up (the teleport itself). Arriving ends it — which is the moment "you're still wearing
+-- the travel cloak" turns into the useful thing to say, so the reminder lands on the far side.
+local holdUntil = 0
+local TRAVEL_HOLD = 5  -- only has to cover notice-and-right-click; the cast extends it from there
+
+-- Deliberately not a list of travel items: C_Item.GetItemSpell answers "does this have a Use:
+-- effect" from the item itself, which covers every teleport cloak, port trinket and on-use
+-- oddity without naming any of them.
+local function HasUseEffect(slot)
+    local link = GetInventoryItemLink("player", slot)
+    if not link then return false end  -- slot was emptied, not filled
+    local ok, spellName = pcall(C_Item.GetItemSpell, link)
+    return ok and spellName ~= nil
+end
+
+local function TravelHold()
+    if UnitCastingInfo("player") or UnitChannelInfo("player") then return true end
+    return GetTime() < holdUntil
+end
 
 -- Gear that belongs to a saved equipment set was put on deliberately. A speed-levelling
 -- or utility set is chosen for what it does, not for its item level, so "this is 40 ilvl
@@ -159,14 +190,20 @@ end
 -- 60 was offered gear that wants 70: Pawn scores stats, and stats are stats whoever is
 -- carrying them.
 --
+-- Armour type is the case the requirement read CANNOT catch, because nothing about the
+-- item is wrong: a druid may legally equip cloth, so no red text appears and every
+-- filter passes it. Only the class's own armour type answers it, so that gate is a
+-- separate call rather than more requirement-reading.
+--
 -- The requirement read lives in GameData so the reward picker uses the same one. This
 -- deliberately does NOT go through GameData.CanPlayerUseItem: that ends in IsUsableItem,
 -- which reports nil for plenty of ordinary gear, and treating nil as unusable here would
 -- silently hide real upgrades. Uncached data degrades to "allow" and the next scan
 -- revisits it — a missed pass is cheap, a permanently hidden upgrade is not.
 --
--- Cached per itemID because the caller is the deliberately-cheap bag walk that runs on
--- every bag event; the cache is dropped on level-up, where verdicts actually change.
+-- Cached per itemID because the caller is the deliberately-cheap bag walk that runs on every
+-- bag event. Dropped where the verdicts actually change: level-up (gear becomes wearable) and
+-- specialization change (the primary-stat answer is per spec, but the key is only the itemID).
 local function CanPlayerEquip(link, id)
     if not link then return false end
     -- No id (odd link) means no cache slot — still answer, just don't store under nil.
@@ -175,6 +212,19 @@ local function CanPlayerEquip(link, id)
     local gameData = GetGameData()
     local usable = not (gameData and gameData.ItemFailsARequirement
                         and gameData.ItemFailsARequirement(link))
+
+    if usable and gameData and gameData.ItemIsWrongArmorType
+       and gameData.ItemIsWrongArmorType(link) then
+        usable = false
+    end
+
+    -- Primary stat, same reasoning one step further: an Agility spear is legal for a
+    -- Restoration druid to hold and has no armour type to be wrong about, so only the stat
+    -- itself says no. This is also the floor when Pawn is absent or its scale is generic.
+    if usable and gameData and gameData.ItemIsWrongPrimaryStat
+       and gameData.ItemIsWrongPrimaryStat(link) then
+        usable = false
+    end
 
     if id then usableCache[id] = usable end
     return usable
@@ -226,6 +276,61 @@ local function ResolveSlot(rec)
         if not GetInventoryItemLink("player", s) then return s end  -- empty slot
     end
     return slots[1]
+end
+
+-- ============================================================
+-- Item-level fallback (no Pawn)
+-- ============================================================
+-- With no Pawn scale nothing scores at all, and the advisor goes silent in a way that reads as
+-- "you have no upgrades" rather than "nothing was measured" — the two are indistinguishable
+-- from outside. Item level is the crude answer, and crude beats silent while levelling, which
+-- is where this addon lives.
+--
+-- Reached ONLY when Pawn cannot answer, and deliberately blunt: no stat weighting, no role
+-- awareness. What keeps it honest is the gate it sits behind — usability, armour type and
+-- primary stat are all filtered out before anything is scored, so the worst it can do is prefer
+-- a higher-item-level piece the player's spec can legitimately wear.
+--
+-- Results are shaped exactly like Pawn's, so the minimum-upgrade threshold, slot resolution,
+-- the toast and auto-equip all work without knowing which scorer produced them.
+local NO_BASELINE = 100  -- empty slot; matches the sentinel FormatUpgrade reads as "no baseline"
+
+local function ItemLevel(link)
+    if not link then return nil end
+    local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
+    return ok and ilvl or nil
+end
+
+local function ScoreByItemLevel(link, invType)
+    local slots = INVTYPE_SLOTS[invType]
+    if not slots then return nil end
+
+    local candidate = ItemLevel(link)
+    if not candidate then return nil end  -- uncached: no verdict rather than a wrong one
+
+    -- Against the WEAKEST of a dual slot — the ring or one-hander a new one should displace.
+    -- Pawn names the loser itself; here it has to be worked out.
+    local worstLink, worstLevel
+    for _, s in ipairs(slots) do
+        local equipped = GetInventoryItemLink("player", s)
+        if not equipped then
+            return { isUpgrade = true, pawnPercentUpgrade = NO_BASELINE, byItemLevel = true }
+        end
+        local level = ItemLevel(equipped)
+        if not level then return nil end  -- uncached on this side too: still no verdict
+        if not worstLevel or level < worstLevel then
+            worstLink, worstLevel = equipped, level
+        end
+    end
+
+    if candidate <= worstLevel then return nil end
+    return {
+        isUpgrade          = true,
+        -- max(,1) only guards the divide; a real equipped item never reports zero.
+        pawnPercentUpgrade = (candidate - worstLevel) / math.max(worstLevel, 1),
+        existingItemLink   = worstLink,
+        byItemLevel        = true,
+    }
 end
 
 local function Enabled()
@@ -291,9 +396,11 @@ local function StatDeltaText(candidateLink, equippedLink)
     return table.concat(parts, "   ")
 end
 
+-- The toast carries the message; chat does not need to repeat it. Kept as debug so a
+-- "why did it equip that" question can still be answered from the log.
 local function Notify(msg)
     local services = GetServices()
-    if services and services.Info then services.Info(msg) else print("|cff00ccffJustQuest:|r " .. msg) end
+    if services and services.Debug then services.Debug("GearAdvisor", msg) end
 end
 
 local function RefreshUI()
@@ -406,7 +513,9 @@ local function ShowNextPrompt()
     -- shouldn't be a slot-by-slot interrogation.
     -- The count goes in the heading, not the button: four buttons already fill the row,
     -- and a two-digit count in the label would push the last one off the frame.
-    local heading = "Gear upgrade"
+    -- Name the weaker basis. "+18% upgrade" from item level alone is a different claim from
+    -- the same number out of a stat scale, and the player can only judge it if they're told.
+    local heading = best.byItemLevel and "Gear upgrade (by item level)" or "Gear upgrade"
     if pending > 1 then
         heading = heading .. "  (" .. pending .. " waiting)"
         actions[#actions + 1] = { text = "Equip All", func = function()
@@ -428,6 +537,22 @@ local function ShowNextPrompt()
         head = heading, text = best.link, sub = detail,
         link = best.link, stats = statLine, actions = actions,
     }
+end
+
+-- Ask again once the hold clears. Without this the reminder is simply dropped: the hold ends on
+-- a clock, and nothing is guaranteed to move afterwards to trigger another scan — arriving in a
+-- new zone doesn't touch your bags.
+local HoldRecheck
+HoldRecheck = function()
+    local services = GetServices()
+    if not (services and services.ScheduleOnce) then return end
+    services.ScheduleOnce("gear_advisor_hold", 1, function()
+        if TravelHold() then
+            HoldRecheck()
+        elseif not promptedID then
+            ShowNextPrompt()
+        end
+    end)
 end
 
 -- ============================================================
@@ -577,10 +702,9 @@ function GearAdvisor.Scan()
     local spec = GetSpecialization()
     local relevant = ps.RelevantScales(spec)
     if not relevant then
-        -- Name it. Without a scale for the spec being played, every item below scores nil
-        -- and the scan reports "0 recommendations", which reads as "you have no upgrades"
-        -- rather than "nothing was measured" — the two look identical from outside.
-        Debug("scan: no Pawn scale applies to the spec you're playing — nothing can be scored")
+        -- No scale for the spec being played (or no Pawn at all). Item level takes over so the
+        -- advisor still says something; see ScoreByItemLevel for why crude beats silent.
+        Debug("scan: no Pawn scale applies to the spec you're playing — scoring by item level")
     end
 
     -- Pass 2 — score.
@@ -601,8 +725,16 @@ function GearAdvisor.Scan()
         return known
     end
     for _, c in ipairs(candidates) do
-        -- Active-spec scales precomputed above; nil relevant -> nothing to score.
-        local result = relevant and ps.ScoreItem(c.link, spec, relevant)
+        -- Pawn where it can answer, item level where it can't. Written out rather than as
+        -- `relevant and ... or ...`: with Pawn present but this item not yet cached, ScoreItem
+        -- returns nil and that has to STAY nil, not quietly drop through to the cruder scorer
+        -- and mix two kinds of verdict inside one scan.
+        local result
+        if relevant then
+            result = ps.ScoreItem(c.link, spec, relevant)
+        else
+            result = ScoreByItemLevel(c.link, c.invType)
+        end
         if result then scored = scored + 1 end
         if result and result.isUpgrade and result.pawnPercentUpgrade >= minPct then
             local rec = {
@@ -612,6 +744,7 @@ function GearAdvisor.Scan()
                 invType      = c.invType,
                 bound        = c.bound,
                 id           = c.id,
+                byItemLevel  = result.byItemLevel,  -- say so in the prompt; it's a weaker claim
             }
             -- Keyed by DESTINATION SLOT, not equip location: a shield, an off-hand weapon
             -- and a held-in-off-hand frill are three equip locations that all land in slot
@@ -632,8 +765,8 @@ function GearAdvisor.Scan()
 
     local nRecs = 0
     for _ in pairs(recs) do nRecs = nRecs + 1 end
-    Debug(string.format("scan: %d equippable in bags, %d in scorable slots, %d got a Pawn verdict, %d recommendation(s)",
-        seen, #candidates, scored, nRecs))
+    Debug(string.format("scan: %d equippable in bags, %d in scorable slots, %d scored (%s), %d recommendation(s)",
+        seen, #candidates, scored, relevant and "Pawn" or "item level", nRecs))
 
     -- A prompt outlives the scan that raised it, so it can go stale: equip the item
     -- yourself (or sell it, or find something better), and the rebuild above drops it from
@@ -645,7 +778,11 @@ function GearAdvisor.Scan()
     -- Offer the best suggestion, unless a prompt is already up waiting on you. Nothing is
     -- suppressed for merely having been shown — only your Skip / Never does that — so an
     -- item you equip and later take off is offered again.
-    if not promptedID then ShowNextPrompt() end
+    if TravelHold() then
+        HoldRecheck()  -- mid-trip: ask on the other side, where the answer is useful
+    elseif not promptedID then
+        ShowNextPrompt()
+    end
 
     RefreshUI()
 end
@@ -676,6 +813,9 @@ local function CanEquipNow()
     -- and still have gear swapped from a stale recommendation.
     if not Enabled() then return false end
     if InCombatLockdown() or UnitIsDeadOrGhost("player") then return false end
+    -- Mid-trip: a travel item only works from an equipped slot, so swapping it out here doesn't
+    -- just re-gear you, it cancels the teleport. The caller's retry picks this up on arrival.
+    if TravelHold() then return false end
     local services = GetServices()
     if services and services.InSpecialControlState and services.InSpecialControlState() then return false end
     if services and services.ShouldAutomate and not services.ShouldAutomate() then return false end
@@ -842,9 +982,9 @@ function GearAdvisor.Diagnose()
                     tostring(scale.SpecID), applies and "  |cff00ff00<= applies to you|r" or ""))
             end
         end
-        if not anyVisible then p("  |cffff0000no visible Pawn scale — enable/create one for this spec in Pawn|r") end
+        if not anyVisible then p("  |cffffaa00no visible Pawn scale — scoring by item level; create one in Pawn for stat-aware picks|r") end
     else
-        p("  |cffff0000PawnCommon.Scales unavailable (Pawn not loaded?)|r")
+        p("  |cffffaa00PawnCommon.Scales unavailable (Pawn not loaded?) — scoring by item level|r")
     end
 
     local mh = GetInventoryItemLink("player", 16)
@@ -852,6 +992,10 @@ function GearAdvisor.Diagnose()
         local r = ps.ScoreItem(mh, activeIdx)
         p("equipped weapon: " .. mh .. " -> " .. (r and ("upgrade=" .. tostring(r.isUpgrade)) or "nil (no verdict)"))
     end
+
+    -- Resolved once, exactly as the scan does it, so the verdicts below are the ones the
+    -- engine would actually reach rather than a second opinion computed a different way.
+    local relevant = ps and ps.RelevantScales(activeIdx)
 
     local found = false
     for bag = 0, (NUM_BAG_SLOTS or 4) do
@@ -863,13 +1007,19 @@ function GearAdvisor.Diagnose()
                 if invType and INVTYPE_SLOTS[invType] then
                     found = true
                     local cached = PawnGetItemData and (PawnGetItemData(link) ~= nil)
-                    local r = ps and ps.ScoreItem(link, activeIdx)
+                    local r
+                    if relevant then
+                        r = ps.ScoreItem(link, activeIdx, relevant)
+                    else
+                        r = ScoreByItemLevel(link, invType)
+                    end
                     -- Report the item levels the verdict turns on: a Pawn percentage is a
                     -- ratio, so it reads the same whether the baseline is comparable or
                     -- scores near zero. Only the levels show which one you're looking at.
                     local verdict = "nil"
                     if r then
-                        verdict = ("upgrade=%s pct=%.2f ilvl=%s vs %s"):format(
+                        verdict = ("%supgrade=%s pct=%.2f ilvl=%s vs %s"):format(
+                            r.byItemLevel and "[item level] " or "",
                             tostring(r.isUpgrade), r.pawnPercentUpgrade or 0,
                             tostring(C_Item.GetDetailedItemLevelInfo(link) or "?"),
                             r.existingItemLink
@@ -909,6 +1059,7 @@ local function ScanThenMaybeEquip(force)
 end
 
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 frame:RegisterEvent("BAG_UPDATE_DELAYED")
 frame:RegisterEvent("PLAYER_LEVEL_UP")
@@ -918,14 +1069,29 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_LOGIN" then
         if Enabled() then ScheduleScan(true) end
 
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- Arrived. If a travel item brought us here it has done its job, so end the hold: now is
+        -- when "you're still wearing the teleport cloak" is worth saying. Forced because the trip
+        -- is what changed, not the bags. A blocked auto-equip is already retrying on its own.
+        holdUntil = 0
+        if Enabled() then ScheduleScan(true) end
+
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         -- Prompt (and, in auto-equip mode, equip) the best gear for the new spec. Forced:
         -- your bags are identical, but every score in them just changed.
-        if arg1 == "player" and Enabled() then
-            ScanThenMaybeEquip(true)
+        if arg1 == "player" then
+            -- The usability verdicts have to go with them: they are cached per itemID, but
+            -- the primary-stat gate answers per SPEC. A druid going Restoration -> Feral
+            -- would otherwise keep judging Agility gear by the Intellect answer.
+            wipe(usableCache)
+            if Enabled() then ScanThenMaybeEquip(true) end
         end
 
     elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+        -- Something with a Use: effect just went on — a teleport cloak, a port trinket. Give it
+        -- a moment to be used before offering to take it back off again (see TravelHold).
+        if arg1 and HasUseEffect(arg1) then holdUntil = GetTime() + TRAVEL_HOLD end
+
         -- What you're wearing is half of every score, and equipping the recommended item
         -- yourself is the case that has to retire its own prompt. Bag events cover most of
         -- this by side effect, but this is the signal that actually means it. Not forced:

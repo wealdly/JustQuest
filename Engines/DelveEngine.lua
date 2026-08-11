@@ -59,9 +59,13 @@ local function Debug(msg)
     if services and services.Debug then services.Debug("Delve", msg) end
 end
 
+-- Automation runs quiet. What used to narrate itself in chat — every power taken, every reroll,
+-- every tier picked — goes to the debug channel instead, so the detail is still there when you
+-- turn debug on without a running commentary during play. Answers to a slash command still
+-- print normally: you asked for those.
 local function Notify(msg)
     local services = GetServices()
-    if services and services.Info then services.Info(msg) else print("|cff00ccffJustQuest:|r " .. msg) end
+    if services and services.Debug then services.Debug("Delve", msg) end
 end
 
 local function Get(ns, key)
@@ -704,8 +708,10 @@ local probeArmed, probedChoiceID = false, nil
 
 function DelveEngine.ArmProbe()
     probeArmed = true
-    Notify("Probe armed. Open a power choice — auto-select is suppressed for that one, and the "
-           .. "window is left visible so you can compare it against the dump.")
+    -- Printed, not routed to debug: this is the reply to /jq probe, and a diagnostic you
+    -- invoked that answers only in the debug channel is a diagnostic that looks broken.
+    print("|cff00ccffJustQuest:|r Probe armed. Open a power choice — auto-select is suppressed "
+          .. "for that one, and the window is left visible so you can compare it against the dump.")
 end
 
 local function tf(v)
@@ -1108,6 +1114,18 @@ end
 -- way its own dropdown does), then — only if you asked for it — actually go in.
 local function SelectTier(picker)
     if not On("delve", "autoTier") or not MayAutomate() then return end
+
+    -- 12.1.0 gave this same frame a second job: it now also runs Lairs, whose tiers can put you
+    -- into an LFG queue (`queueAsLFG`). A delve-tier preference is not consent to be queued for
+    -- group content, so anything the game does not call a delve is left alone. Fail open — if
+    -- the type can't be read, behave as before rather than silently stopping on delves.
+    if C_DelvesUI and C_DelvesUI.GetTieredEntranceType and Enum and Enum.TieredEntranceType then
+        local okType, entranceType = pcall(C_DelvesUI.GetTieredEntranceType)
+        if okType and entranceType and entranceType ~= Enum.TieredEntranceType.Delve then
+            Debug(("entrance type %s isn't a delve — leaving the picker to you"):format(tostring(entranceType)))
+            return
+        end
+    end
 
     local desired = Get("delve", "preferredTier") or 1
     local services = GetServices()

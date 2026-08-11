@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-08-11
+
+### Added
+- The gear advisor now works without Pawn. Previously, if Pawn wasn't installed — or had no scale set up for the specialization you were playing — the advisor scored nothing and quietly recommended nothing, which looked exactly like having no upgrades. It now falls back to comparing item levels, and says so: the prompt reads "Gear upgrade (by item level)" so you know it's the rougher judgement. Everything else still applies, so it won't offer you the wrong armor type, the wrong primary stat, or anything you can't wear. Install Pawn and set up a scale and it goes back to using that, which is still the better answer.
+
+### Changed
+- Updated for game patch 12.1.0.
+- The delve difficulty window is only automated when it's actually offering a delve. That window has been given a second job this patch — it now also sets the difficulty for lairs, and some of those difficulties queue you for a group rather than sending you straight in. Picking a delve tier isn't the same as agreeing to be put in a queue, so the automatic tier choice and auto-enter stay with delves; a lair difficulty window is left for you.
+- JustQuest no longer narrates itself in chat. Accepting a quest, taking an anima power, rerolling, picking a delve tier, swapping a piece of gear, or stepping back so you can handle a dialogue yourself — all of it used to print a line, and none of it does now. What replaced it was already there: the gear toast still appears on screen, the dialogue panel still carries its own note, and the full detail is one debug toggle away. Replies to slash commands you type are untouched, and so is the optional end-of-run summary.
+- The "Everything openable" auto-open mode and the rogue "Auto-Pick Lockboxes" toggle are gone. Neither could ever open a lockbox — that needs a key or a lockpick, and the game only lets you use those yourself, never an addon on your behalf. Auto-open is now simply "My list only" or "Openable containers". If you had "Everything openable" selected you'll be moved to "Openable containers", which is what it had been doing anyway.
+- The options panel got a design cleanup. The main JustQuest page is now a short overview with the master switches; each category opens from the AddOns list and reads the same way — a short intro up top, details in tooltips. Colors now mean the same thing everywhere (gold for headings, soft red for caveats, grey for empty lists), and empty lists explain how to fill them instead of just saying "None". The safety summary under Advanced now describes current behavior, "Reset Instance On Exit" moved to the Instances category where it belongs, and the escort-quest toggle (which could never work — the game offers no way to detect escort quests) is gone.
+
+### Fixed
+- The run summary no longer reports opening containers it never opened. If you were carrying a lockbox, it was counted as opened every single time the addon looked in your bags — the game accepts the request to open one and then quietly declines, and that was being read as success. An open now only counts once the container is actually used up, and anything that refuses to open is left alone after a few tries instead of being poked forever.
+- Follow-up quests that a quest giver hands out a second or two after the previous one are picked up reliably again. If the new quest arrived while the addon was still finishing the previous step, it was written off as "nothing new here" and never looked at again — you had to click the NPC a second time. The wait for a slow follow-up is also longer now, so a laggy quest giver still gets caught.
+- The note explaining why automation left a dialogue for you to handle is readable again. It sat just past the bottom edge of the parchment, so its dark text landed on the dark border below the paper. It now sits on the paper, with the rest of the dialogue text.
+- The gear advisor now leaves teleport cloaks and other on-use travel gear alone while you're travelling. Putting one on read as an instant downgrade, so you'd get an upgrade prompt while you were still reaching for the right-click — and with auto-equip on, the cloak came straight back off, which cancels the teleport, since those items only work while worn. The advisor now waits out the cast and reminds you to swap back once you've arrived, which is when you want to hear it.
+- The gear advisor no longer suggests gear built around the wrong primary stat. A Restoration druid was offered an Agility spear: it's legal to hold, it isn't the wrong armor type, and nothing on the tooltip marks it as a mistake, so a high enough number on it read as an upgrade. Items carrying a primary stat your specialization doesn't use are now left out. Gear with no primary stat at all — cloaks, necklaces, most rings — is unaffected, and the check re-evaluates when you change specialization.
+- The gear advisor no longer suggests armor your class isn't meant to wear. A druid with a high-stat cloth chest in their bags was offered it as an upgrade — it can be equipped, so nothing flagged it, but wearing it costs your armor specialization bonus. Only your own armor type is suggested now. Cloaks, rings, necklaces and weapons are unaffected.
+
 ## [3.4.0] - 2026-07-28
 
 ### Added

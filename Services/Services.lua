@@ -164,7 +164,9 @@ function Services.Debug(module, msg)
     print("|cff00ccffJQ " .. (module or "Core") .. ":|r " .. out)
 end
 
--- Info output (always shown)
+-- Direct answers to something the player did — a slash command, a button. Automation itself
+-- says nothing in chat any more; it uses Debug above, so a quiet game stays quiet and the
+-- detail is one /jq debug away.
 function Services.Info(msg)
     print("|cff00ccffJustQuest:|r " .. tostring(msg))
 end
@@ -213,11 +215,13 @@ function Services.OutputHalt(reason, extraInfo)
         msg = msg .. " (" .. tostring(extraInfo) .. ")"
     end
     
-    -- Fast mode: restore frame visibility so player can interact manually
+    -- Fast mode: restore frame visibility so player can interact manually. This is the part
+    -- that actually matters — the panel comes back and you deal with it. The announcement was
+    -- only ever narration on top of a frame you can already see.
     Services.RestoreAutomationFrames()
 
-    print("|cffff6b00JustQuest:|r " .. msg .. " - manual interaction required")
-    return true  -- Message was shown
+    Services.Debug("Halt", msg .. " - manual interaction required")
+    return true  -- handled (the throttle consumed this reason)
 end
 
 -- ============================================================
@@ -691,24 +695,27 @@ end
 -- halves in fast mode — exactly the mode this brake exists to protect.
 local FLAVOR_CLOSE_THROTTLE = 1.0
 
+-- Returns handled, examined. "examined" is false when we bailed before looking at the
+-- content at all (busy mid-step, interfering frame, automation gated off) — the poll
+-- below uses it to know its content fingerprint is not a verdict on that content.
 local function DispatchContent(reason)
     -- Use CanAutomateBase (not CanAutomate) to avoid noisy "interfering frame" messages
     -- during background repumps (e.g. MerchantFrame opening after quest turn-in)
     if not Services.CanAutomateBase() then
         Services.Debug("Services", "DispatchContent skipped: CanAutomateBase() failed, reason=" .. (reason or ""))
-        return false
+        return false, false
     end
     -- Silently bail if interfering frame is open
     if Services.HasInterferingFrame() then
         Services.Debug("Services", "DispatchContent skipped: interfering frame open, reason=" .. (reason or ""))
-        return false
+        return false, false
     end
 
     local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
     if safetyEngine and safetyEngine.IsBusy() then
         Services.Debug("Services", "DispatchContent skipped: already busy ("
             .. (safetyEngine.GetState() or "?") .. "), reason=" .. (reason or ""))
-        return false
+        return false, false
     end
 
     local hasContent, contentType = Services.HasAnyActionableContent()
@@ -745,7 +752,7 @@ local function DispatchContent(reason)
                 end
             end
         end
-        return false
+        return false, true
     end
 
     local questEngine = JustQuest.Core.GetModule("QuestEngine")
@@ -755,7 +762,7 @@ local function DispatchContent(reason)
     if contentType == "gossip" and gossipEngine and gossipEngine.IsInFailedCooldown then
         if gossipEngine.IsInFailedCooldown() then
             Services.Debug("Services", "Skipping gossip - in failed cooldown")
-            return false
+            return false, false
         end
     end
 
@@ -765,7 +772,7 @@ local function DispatchContent(reason)
         end
         -- The legacy path runs its own data poll (PollForLegacyQuestData), so report
         -- handled either way rather than stacking a second poll on top of it.
-        return true
+        return true, true
     end
 
     if contentType == "modern" or contentType == "gossip" then
@@ -780,13 +787,13 @@ local function DispatchContent(reason)
         -- Always route through QuestEngine — it makes fresh API calls and has
         -- correct priority: complete quests > available quests > gossip delegation.
         if questEngine and questEngine.OnGossipShow then
-            return questEngine.OnGossipShow() and true or false
+            return questEngine.OnGossipShow() and true or false, true
         elseif gossipEngine and gossipEngine.OnGossipShow then
-            return gossipEngine.OnGossipShow(true) and true or false
+            return gossipEngine.OnGossipShow(true) and true or false, true
         end
     end
 
-    return true
+    return true, true
 end
 
 -- Post-action re-checks fire on a fixed short delay, but the follow-up quest/gossip
@@ -822,15 +829,24 @@ local function ScheduleDispatch(key, delay, reason, deadline, lastPrint)
         -- Unchanged content means the server has sent nothing new since the last look,
         -- so the handler cannot reach a different decision than it just did.
         local print_ = ContentFingerprint()
+        local examined = false
         if print_ ~= lastPrint then
-            if DispatchContent(reason) then return end
+            local handled
+            handled, examined = DispatchContent(reason)
+            if handled then return end
         end
         if not deadline or GetTime() >= deadline then return end
         if not Services.IsInteractionFrameOpen() then return end
 
+        -- Only remember this fingerprint if the content was actually examined. A pass
+        -- that bailed on a transient gate (still BUSY finishing the previous step, an
+        -- interfering frame) never judged this content — recording it anyway made every
+        -- later tick skip the dispatch as "already seen", so a quest the server delivered
+        -- mid-step was never looked at again and needed a manual re-click.
         local maxDelay = JustQuest.Constants.TIMING.RE_PUMP_MAX_DELAY or 0.3
         local growth   = JustQuest.Constants.TIMING.RE_PUMP_GROWTH_FACTOR or 1.4
-        ScheduleDispatch(key, math.min((delay or 0.15) * growth, maxDelay), reason, deadline, print_)
+        ScheduleDispatch(key, math.min((delay or 0.15) * growth, maxDelay), reason, deadline,
+            examined and print_ or lastPrint)
     end)
 end
 

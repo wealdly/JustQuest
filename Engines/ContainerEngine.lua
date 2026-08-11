@@ -4,8 +4,6 @@ local ADDON_NAME, JustQuest = ...
 
 local DANGEROUS_CONTAINERS = JustQuest.Database.DANGEROUS_CONTAINERS
 
-local PICK_LOCK_SPELL = 1804  -- Rogue "Pick Lock"
-
 local ContainerEngine = {}
 
 -- Memoized module accessors
@@ -29,7 +27,6 @@ local configCache = {
     whitelist = {},
     blacklist = {},
     mode = "safe",
-    rogueAutoPick = false,
     lastUpdate = 0,
 }
 
@@ -41,7 +38,6 @@ local function UpdateConfigCache()
     configCache.whitelist = config.Get("containers", "whitelist") or {}
     configCache.blacklist = config.Get("containers", "blacklist") or {}
     configCache.mode = config.Get("containers", "mode") or "safe"
-    configCache.rogueAutoPick = config.Get("containers", "rogueAutoPick") or false
     configCache.lastUpdate = GetTime()
 end
 
@@ -77,13 +73,18 @@ local function ForEachBagItem()
     end)
 end
 
--- Whether to auto-open this bag item. PRIMARY signal is the LIVE ContainerItemInfo:
--- info.hasLoot is the runtime ITEM_FLAG_OPENABLE ("right-click to open") and info.isLocked
--- separates free-open containers from lockboxes — so this needs no item DB and is always
--- current. Both are declared Nilable = false on ContainerItemInfo, so there is no "flag
--- unreadable" case to fall back from; a generated item list used to sit here for that and was
--- unreachable dead weight (2,275 lines) built from the very same flag it was backing up.
--- The isLocked branch in ProcessContainerItem still gates lockboxes at runtime.
+-- Whether to auto-open this bag item. The signal is the LIVE ContainerItemInfo: info.hasLoot is
+-- the runtime ITEM_FLAG_OPENABLE ("right-click to open"), so this needs no item DB and is always
+-- current. It is declared Nilable = false, so there is no "flag unreadable" case to fall back
+-- from; a generated item list used to sit here for that and was unreachable dead weight (2,275
+-- lines) built from the very same flag it was backing up.
+--
+-- There is deliberately no lockbox test here, because there is no runtime signal for one.
+-- info.isLocked is NOT "this is a lockbox" — the game uses it only to grey out the icon and
+-- block pickup/stack-split while an item is transiently in use, and a lockbox sitting in your
+-- bags reports false. A locked box does report hasLoot, so it reaches UseContainerItem and the
+-- server simply refuses. Confirming the open (ResolvePending) is what keeps that from counting
+-- as an open and bounds the retries; reading isLocked as "lockbox" is what made it count.
 local function ShouldOpen(info)
     local itemID = info.itemID
     -- User whitelist forces open — covers loot bags that open via an on-use spell (no flag).
@@ -91,8 +92,7 @@ local function ShouldOpen(info)
         return true
     end
 
-    local mode = configCache.mode
-    if mode == "list" then return false end  -- whitelist only
+    if configCache.mode == "list" then return false end  -- whitelist only
 
     -- Never auto-open a quest item. The openable flag is set on plenty of them
     -- ("Package of Identified Plants", "Bundle of Reports"), and opening one out of
@@ -102,9 +102,7 @@ local function ShouldOpen(info)
     local classID = select(6, C_Item.GetItemInfoInstant(itemID))
     if classID == JustQuest.Constants.ITEM_CLASS.QUESTITEM then return false end
 
-    if not info.hasLoot then return false end            -- not an openable container
-    if mode == "safe" then return not info.isLocked end  -- free-open only; lockboxes wait
-    return true                                          -- "all": free-open + lockboxes
+    return info.hasLoot  -- openable container
 end
 
 local function IsDangerousContainer(itemID)
@@ -262,29 +260,38 @@ local function CleanupFailedContainers()
     return cleaned
 end
 
--- Rogue auto-pick: cast Pick Lock on a locked box and apply it to the slot; a pickable box
--- unlocks async (ITEM_LOCK_CHANGED) and the normal open path loots it on the next scan.
--- Gated: "all" mode only, opted in, Rogue who knows the spell, never in combat. It's
--- attempt-based (no lock-type data needed) — a key-required or too-high-skill box simply
--- doesn't unlock and burns its retry budget (see the caller), then is left alone. The cast
--- is pcall'd because a non-hardware-event cast can be blocked. (Needs in-game validation.)
-local function TryPickLock(bagID, slotID)
-    if not (configCache.rogueAutoPick and configCache.mode == "all") then return false end
-    if InCombatLockdown() then return false end
-    if not (IsSpellKnown and IsSpellKnown(PICK_LOCK_SPELL)) then return false end
+-- UseContainerItem() reports success even when nothing opened — a locked box is the everyday
+-- case — so an open is only real once the item is CONSUMED: gone from the slot, replaced, or one
+-- fewer in the stack. Trusting the call instead meant a lockbox "opened" on every single scan,
+-- forever: it re-armed its own retry budget each time and reported an open that never happened.
+local function IsOpenConfirmed(info)
+    local pending = pendingContainerUnlock
+    if not pending then return false end
+    return (not info)
+        or info.itemID ~= pending.itemID
+        or info.stackCount < pending.stackCount
+end
 
-    -- pcall result is intentionally ignored: whether the cast takes effect or is blocked, we
-    -- return "attempted" so the caller charges a retry — that's what bounds attempts on a box
-    -- that can't actually be picked (key-required, too-high skill, or a blocked cast).
-    pcall(function()
-        if C_Spell and C_Spell.CastSpellByID then
-            C_Spell.CastSpellByID(PICK_LOCK_SPELL)
-        elseif CastSpellByID then
-            CastSpellByID(PICK_LOCK_SPELL)
-        end
-        C_Container.UseContainerItem(bagID, slotID)  -- applies the pending pick to this box
-    end)
-    return true
+-- Settle the in-flight open. Only here does an open count, clear its failure record, or credit
+-- the run summary; anything else charges a retry, which is what eventually leaves an
+-- unopenable box alone.
+local function ResolvePending(opened)
+    local pending = pendingContainerUnlock
+    if not pending then return end
+    pendingContainerUnlock = nil
+
+    if not opened then
+        MarkContainerFailed(pending.key, "no change after use")
+        return
+    end
+
+    ClearContainerFailure(pending.key)
+    ReduceAllFailurePenalties()
+    expectedContainers[pending.itemID] = nil
+    lastOpenTime = 0  -- let the next container follow immediately
+
+    local services = GetServices()
+    if services and services.NoteAutomation then services.NoteAutomation("containers") end
 end
 
 -- Returns true = opened this item (stop the scan), nil = stop the scan (busy/combat/failure),
@@ -306,32 +313,25 @@ local function ProcessContainerItem(bagID, slotID, info, currentTime)
         return false
     end
 
-    if info.isLocked then
-        -- Rogue auto-pick (retry-bounded): a pickable box unlocks and opens on a later scan; a
-        -- box that can't be picked charges its retry budget, then waits like any locked box.
-        if ShouldRetryContainer(containerKey) and TryPickLock(bagID, slotID) then
-            MarkContainerFailed(containerKey, "pick_attempt")
-            -- Pick Lock unlocks async and (unlike a key) consumes nothing, so no BAG_UPDATE
-            -- follows to re-scan. Schedule one (debounced) so the unlocked box gets opened.
-            local services = GetServices()
-            if services and services.ScheduleOnce then
-                services.ScheduleOnce("container_pick_rescan", 1.0, ContainerEngine.OnBagUpdateDelayed)
-            end
-        end
-        return false
-    end
+    -- Transiently in use (being moved, or our own open still in flight) — leave it this pass.
+    if info.isLocked then return false end
 
     if not ShouldRetryContainer(containerKey) then return false end
     if InCombatLockdown() then return nil end
 
     local success, err = pcall(C_Container.UseContainerItem, bagID, slotID)
     if success then
-        -- UseContainerItem() reports success even if nothing opened, so we confirm the open via
-        -- pendingContainerUnlock + ITEM_LOCK_CHANGED rather than trusting this call.
-        ClearContainerFailure(containerKey)
-        ReduceAllFailurePenalties()
-        expectedContainers[itemID] = nil
-        pendingContainerUnlock = { bagID = bagID, slotID = slotID, itemID = itemID, timestamp = GetTime() }
+        -- Not an open yet — see IsOpenConfirmed. Record it as in flight and let ResolvePending
+        -- decide; the stack count is the only way to spot one taken from a stack of several.
+        pendingContainerUnlock = {
+            bagID = bagID, slotID = slotID, itemID = itemID,
+            stackCount = info.stackCount, key = containerKey, timestamp = GetTime(),
+        }
+        -- A refused open fires no events at all, so nothing would come back to settle this.
+        local services = GetServices()
+        if services and services.ScheduleOnce then
+            services.ScheduleOnce("container_confirm", 1.1, ContainerEngine.OnBagUpdateDelayed)
+        end
         return true
     end
 
@@ -403,19 +403,18 @@ function ContainerEngine.OpenBagContainers()
         return 
     end
     
-    -- One open is in flight: wait for ITEM_LOCK_CHANGED to confirm it before scanning again.
-    -- If that event is missed, resolve here — the item is gone/changed/unlocked, or a 1.0s
-    -- timeout gives up (don't mark failed: it may have opened).
-    if pendingContainerUnlock and pendingContainerUnlock.timestamp then
-        if currentTime - pendingContainerUnlock.timestamp > 1.0 then
-            pendingContainerUnlock = nil
+    -- One open is in flight. Settle it before scanning again: consumed means it opened, and
+    -- 1s with the item untouched means the server refused, which charges a retry so the box is
+    -- eventually left alone instead of being re-attempted (and re-reported) on every scan.
+    if pendingContainerUnlock then
+        local ok, pendingInfo = pcall(C_Container.GetContainerItemInfo,
+                                      pendingContainerUnlock.bagID, pendingContainerUnlock.slotID)
+        if ok and IsOpenConfirmed(pendingInfo) then
+            ResolvePending(true)
+        elseif currentTime - pendingContainerUnlock.timestamp > 1.0 then
+            ResolvePending(false)
         else
-            local info = C_Container.GetContainerItemInfo(pendingContainerUnlock.bagID, pendingContainerUnlock.slotID)
-            if not info or info.itemID ~= pendingContainerUnlock.itemID or not info.isLocked then
-                pendingContainerUnlock = nil  -- consumed, moved, or unlocked
-            else
-                return  -- still locked and waiting — skip this scan
-            end
+            return  -- still in flight
         end
     end
 
@@ -428,9 +427,7 @@ function ContainerEngine.OpenBagContainers()
     for bagID, slotID, info in ForEachBagItem() do
         local result = ProcessContainerItem(bagID, slotID, info, currentTime)
         if result == true then
-            lastOpenTime = currentTime
-            local svc = GetServices()
-            if svc and svc.NoteAutomation then svc.NoteAutomation("containers") end
+            lastOpenTime = currentTime  -- attempted; ResolvePending credits the summary
             break
         elseif result == nil then
             break  -- stop (busy/combat/failure)
@@ -528,50 +525,37 @@ function ContainerEngine.OnAutomationComplete()
     end
 end
 
+-- Fast path for a confirmed open. Our own UseContainerItem also fires this event with the item
+-- still sitting there and merely locked, so only consumption counts; everything else is left to
+-- the timeout in OpenBagContainers, which is what charges the retry.
 function ContainerEngine.OnItemLockChanged(bagID, slotID)
-    if not (bagID and slotID) then return end
+    local pending = pendingContainerUnlock
+    if not (bagID and slotID and pending
+            and pending.bagID == bagID and pending.slotID == slotID) then
+        return
+    end
 
     -- Guard the read like every other GetContainerItemInfo call in this file:
     -- ITEM_LOCK_CHANGED reaches here straight from OnEvent with no outer pcall.
     local ok, info = pcall(C_Container.GetContainerItemInfo, bagID, slotID)
-    if not ok then return end
+    if not (ok and IsOpenConfirmed(info)) then return end
 
-    -- Handle case where item is consumed/moved (info is nil)
-    if not info then
-        -- Item no longer exists - check if this was our pending container
-        if pendingContainerUnlock and 
-           pendingContainerUnlock.bagID == bagID and 
-           pendingContainerUnlock.slotID == slotID then
-            
-    -- Clear the pending state
-            pendingContainerUnlock = nil
-            
-            lastOpenTime = 0
-            
-            if not isProcessing then
-                ContainerEngine.OnBagUpdateDelayed()
-            end
-        end
-        return
-    end
-    
-    -- Our pending open resolves when that box unlocks — clear it and rescan.
-    if not info.isLocked
-       and pendingContainerUnlock
-       and pendingContainerUnlock.bagID == bagID
-       and pendingContainerUnlock.slotID == slotID
-       and pendingContainerUnlock.itemID == info.itemID then
-        pendingContainerUnlock = nil
-        lastOpenTime = 0
-        if not isProcessing then
-            ContainerEngine.OnBagUpdateDelayed()
-        end
+    ResolvePending(true)
+    if not isProcessing then
+        ContainerEngine.OnBagUpdateDelayed()
     end
 end
 
 local eventFrame = CreateFrame("Frame")
 
 function ContainerEngine.Initialize()
+    -- The dropped "all" mode ("safe plus lockboxes") behaves as "safe" now. Rewrite it once, or
+    -- a profile that had it selected shows an empty dropdown for an option that no longer exists.
+    local config = GetConfig()
+    if config and config.Get("containers", "mode") == "all" then
+        config.Set("containers", "mode", "safe")
+    end
+
     UpdateConfigCache()
     
     eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
@@ -608,6 +592,7 @@ function ContainerEngine.OnDisable()
     if services and services.CancelScheduled then
         services.CancelScheduled("container_initial_scan")
         services.CancelScheduled("container_periodic_scan")
+        services.CancelScheduled("container_confirm")
         services.CancelScheduled("container_retry_after_automation")
         services.CancelScheduled("container_scan_after_automation_container")
     end

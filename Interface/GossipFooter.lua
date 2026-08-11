@@ -14,14 +14,24 @@ local GossipFooter = {}
 local text  -- FontString, created on first use (GossipFrame exists at login on retail,
             -- but lazy creation keeps load order irrelevant)
 
+-- The ScrollBox is NOT flush with the parchment: it runs past the bottom of the paper art
+-- and over the dark backdrop underneath. From GossipFrame.xml, both measured down from the
+-- GreetingPanel top: the Material textures stop at 444 (MaterialTopLeft at y=-75, height
+-- 241, then MaterialBotLeft height 128), while the ScrollBox stops at 468 (y=-65, height
+-- 403). Sitting the note on the ScrollBox bottom therefore lands it 22px onto the dark
+-- backdrop, where dark quest ink is unreadable. Both are fixed sizes anchored to the panel,
+-- so this gap is constant - no runtime measuring needed.
+local PARCHMENT_GAP = 24  -- ScrollBox bottom -> bottom edge of the paper
+local NOTE_MARGIN   = 4   -- breathing room above the paper's edge; raise if it still crowds
+
 local function EnsureText()
     if text then return text end
     if not GossipFrame then return nil end
     -- The note belongs INSIDE the parchment reading area, with the rest of the text.
     -- The frame's own bottom edge is the button bar (GoodbyeButton lives there, dark
     -- wood — dark ink is invisible on it), so anchor to the ScrollBox, which is the
-    -- parchment content region (GossipFrame.xml: it ends ~28px above the frame
-    -- bottom, right where the button bar starts).
+    -- scrolling content region — then lift clear of the paper's bottom edge, since the
+    -- ScrollBox overhangs it (see PARCHMENT_GAP).
     local region = GossipFrame.GreetingPanel and GossipFrame.GreetingPanel.ScrollBox
                    or GossipFrame
     -- The FontString must live on a RAISED child frame, not on the panel itself: a
@@ -30,8 +40,9 @@ local function EnsureText()
     -- keep their level offset when the UIPanel manager rebases the parent, so +20
     -- stays on top. No EnableMouse: the holder is a level host, never a click target.
     local holder = CreateFrame("Frame", nil, GossipFrame)
-    holder:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT", 4, 2)
-    holder:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", -4, 2)
+    local bottom = (region == GossipFrame) and NOTE_MARGIN or (PARCHMENT_GAP + NOTE_MARGIN)
+    holder:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT", 4, bottom)
+    holder:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", -4, bottom)
     holder:SetHeight(1)  -- the FontString hangs off the anchors; the holder only hosts a frame level
     holder:SetFrameLevel(GossipFrame:GetFrameLevel() + 20)
     -- QuestFontNormalSmall is what Blizzard puts on this parchment (the body text is

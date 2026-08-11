@@ -72,6 +72,19 @@ JustQuest.Constants.ITEM_MISC_SUBCLASS = {
 }
 
 -- ============================================================
+-- UI Palette
+-- ============================================================
+
+-- One color per role, so panel text reads the same everywhere.
+JustQuest.Constants.COLORS = {
+    EMPHASIS = "|cffffd100", -- headings and key terms inside text (Blizzard gold)
+    GOOD     = "|cff00ff00", -- positive / active
+    WARNING  = "|cffff9999", -- caveats
+    DANGER   = "|cffff5555", -- destructive or invalid
+    MUTED    = "|cffaaaaaa", -- empty states and secondary detail
+}
+
+-- ============================================================
 -- Timing Constants
 -- ============================================================
 
@@ -110,9 +123,12 @@ JustQuest.Constants.TIMING = {
     
     -- Repump backoff (not scaled). TOTAL_TIME bounds how long a re-check keeps
     -- polling for server data that lags behind an accept/turn-in/gossip step
-    -- (and how long legacy greeting polling waits) before giving up.
+    -- (and how long legacy greeting polling waits) before giving up. A follow-up
+    -- quest unlocked by the step just taken can take several seconds to arrive, so
+    -- this covers that window — the poll costs three list reads per tick and stops
+    -- early the moment the frame closes or the content is handled.
     RE_PUMP_MAX_DELAY = 0.3,
-    RE_PUMP_TOTAL_TIME = 1.5,
+    RE_PUMP_TOTAL_TIME = 3.5,
     RE_PUMP_GROWTH_FACTOR = 1.4,
 }
 
@@ -199,10 +215,10 @@ JustQuest.Constants.DEFAULTS = {
             throttleDelay = 0.5,
             -- What counts as auto-openable:
             --   "list" = your whitelist only
-            --   "safe" = whitelist + free-open containers (clams/chests/coin sacks) [default]
-            --   "all"  = also lockboxes (opened once unlocked; rogues can auto-pick)
+            --   "safe" = whitelist + openable containers (clams/chests/coin sacks) [default]
+            -- A legacy "safe plus lockboxes" mode was dropped: opening a lockbox needs a spell
+            -- cast, and a spell cast needs a hardware event, so no automation can reach one.
             mode = "safe",
-            rogueAutoPick = false,  -- rogues: cast Pick Lock on lockboxes ("all" mode)
             whitelist = {},
             blacklist = {},
         },

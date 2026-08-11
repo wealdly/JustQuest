@@ -15,4 +15,9 @@ ignore:
     - UNRELEASED.md
     - Documentation
     - Debug
+    - tools
+    - AGENTS.md
+    - CONTRIBUTING.md
+    - build.ps1
+    - release.ps1
     - "*.code-workspace"

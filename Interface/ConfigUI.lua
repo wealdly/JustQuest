@@ -12,6 +12,11 @@ local ConfigUI = {}
 local ACR = LibStub and LibStub("AceConfigRegistry-3.0", true)
 local ACD = LibStub and LibStub("AceConfigDialog-3.0", true)
 
+-- Shared palette (Core/Constants.lua) — one color per role across the whole panel.
+local COLORS = JustQuest.Constants.COLORS
+local EM, GOOD, WARN, DANGER, MUTED =
+    COLORS.EMPHASIS, COLORS.GOOD, COLORS.WARNING, COLORS.DANGER, COLORS.MUTED
+
 -- Cache for UI state
 local uiCache = {
     registered = false,
@@ -52,45 +57,36 @@ end
 -- Option Builders
 -- ============================================================
 
-local function CreateGeneralOptions()
+-- Root landing panel: what the addon does plus the master switches. Everything
+-- else lives in the category panels, so nothing renders twice.
+local function CreateLandingOptions()
+    local version = C_AddOns and C_AddOns.GetAddOnMetadata
+        and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
     return {
         type = "group",
-        name = "General",
-        order = 1,
+        name = "JustQuest",
         args = {
-            header = {
-                type = "header",
-                name = "JustQuest - Intelligent Quest & NPC Automation",
+            intro = {
+                type = "description",
                 order = 1,
-            },
-            summary = {
-                type = "group",
-                name = "What JustQuest Does",
-                inline = true,
-                order = 2,
-                args = {
-                    description = {
-                        type = "description",
-                        name = "|cffffcc00What JustQuest Does:|r Automates quest interaction safely.\n\n" ..
-                            "• Accepts and turns in quests\n" ..
-                            "• Auto-advances gossip to reach quests (Aggressive gossip, on by default)\n" ..
-                            "• Stops for real decisions: money/coded options, blacklisted keywords, forced menus\n\n" ..
-                            "Use the tabs below to tune behavior.",
-                        order = 1,
-                        fontSize = "medium",
-                    },
-                }
+                fontSize = "medium",
+                name = "Automates quest interaction safely.\n\n" ..
+                    "• Accepts and turns in quests\n" ..
+                    "• Advances gossip to reach quests (Aggressive Gossip, on by default)\n" ..
+                    "• Stops for real decisions: money or coded options, blacklisted keywords, forced menus\n\n" ..
+                    "Each JustQuest category in the AddOns list covers one area of automation.",
             },
             coreSettings = {
                 type = "group",
                 name = "Main Controls",
                 inline = true,
-                order = 3,
+                order = 2,
                 args = {
                     enabled = {
                         type = "toggle",
                         name = "Enable JustQuest",
-                        desc = "Master on/off switch.", 
+                        desc = "Master on/off switch.",
+                        width = "full",
                         order = 1,
                         get = CreateAccessor(nil, "enabled").get,
                         set = CreateAccessor(nil, "enabled").set,
@@ -98,13 +94,14 @@ local function CreateGeneralOptions()
                     automationToggle = {
                         type = "toggle",
                         name = "Quest & NPC Automation",
-                        desc = "Enable/disable quest and gossip automation.", 
+                        desc = "Enable/disable quest and gossip automation.",
+                        width = "full",
                         order = 2,
-                        get = function() 
+                        get = function()
                             local config = JustQuest.Core.GetModule("Config")
                             return config and config.Get("quest", "enabled") and config.Get("gossip", "enabled")
                         end,
-                        set = function(info, value) 
+                        set = function(info, value)
                             local config = JustQuest.Core.GetModule("Config")
                             if config then
                                 config.Set("quest", "enabled", value)
@@ -116,7 +113,8 @@ local function CreateGeneralOptions()
                         type = "toggle",
                         name = "Fast Mode",
                         desc = "Uses tighter timing and hides quest/gossip frames while automating.",
-                        order = 2.5,
+                        width = "full",
+                        order = 3,
                         get = CreateAccessor(nil, "fastMode").get,
                         set = CreateAccessor(nil, "fastMode").set,
                     },
@@ -124,28 +122,28 @@ local function CreateGeneralOptions()
                         type = "toggle",
                         name = "Skip Cinematics",
                         desc = "Skip quest cinematics and movies.",
-                        order = 3,
+                        width = "full",
+                        order = 4,
                         get = CreateAccessor(nil, "skipCinematics").get,
                         set = CreateAccessor(nil, "skipCinematics").set,
                     },
                     automationSummary = {
                         type = "toggle",
-                        name = "Summarize In Chat",
+                        name = "Summarize in Chat",
                         desc = "Print a concise chat line at the end of each automation chain (e.g. \"accepted 2, turned in 1, opened 1 container\").",
-                        order = 3.5,
+                        width = "full",
+                        order = 5,
                         get = CreateAccessor(nil, "automationSummary").get,
                         set = CreateAccessor(nil, "automationSummary").set,
                     },
-                    resetInstanceOnExit = {
-                        type = "toggle",
-                        name = "Reset Instance On Exit",
-                        desc = "When using Quick Exit, automatically reset instances after you leave.\n\nFor 60-second ejection exits, reset waits until you are actually out.",
-                        order = 4,
-                        get = CreateAccessor("lfgQuickExit", "resetInstanceOnExit").get,
-                        set = CreateAccessor("lfgQuickExit", "resetInstanceOnExit").set,
-                    },
                 }
             },
+            versionText = version and {
+                type = "description",
+                order = 3,
+                fontSize = "small",
+                name = MUTED .. "JustQuest " .. version .. "|r",
+            } or nil,
         }
     }
 end
@@ -173,7 +171,7 @@ local function CreateInstanceOptions()
     return {
         type = "group",
         name = "Instances",
-        order = 3.6,  -- after Gear, before Containers
+        order = 4,
         args = {
             intro = {
                 type = "description",
@@ -181,7 +179,25 @@ local function CreateInstanceOptions()
                 fontSize = "medium",
                 name = "Automation for instanced content, where a pop-up choice can be worth answering for you.\n\n" ..
                        "Everywhere else in JustQuest a choice is always left to you. These are the exceptions you can opt into — and they stay off until you do.\n\n" ..
-                       "|cffff9999Anything the game asks you to confirm, and any choice it marks as requiring a selection, is still always handed back.|r",
+                       WARN .. "Anything the game asks you to confirm, and any choice it marks as requiring a selection, is still always handed back.|r",
+            },
+
+            quickExit = {
+                type = "group",
+                name = "Quick Exit",
+                inline = true,
+                order = 1.5,
+                args = {
+                    resetInstanceOnExit = {
+                        type = "toggle",
+                        name = "Reset Instance on Exit",
+                        desc = "When using Quick Exit, automatically reset instances after you leave.\n\nFor 60-second ejection exits, reset waits until you are actually out.",
+                        width = "full",
+                        order = 1,
+                        get = CreateAccessor("lfgQuickExit", "resetInstanceOnExit").get,
+                        set = CreateAccessor("lfgQuickExit", "resetInstanceOnExit").set,
+                    },
+                },
             },
 
             delves = {
@@ -193,8 +209,8 @@ local function CreateInstanceOptions()
                         type = "description",
                         order = 1,
                         fontSize = "medium",
-                        name = "A delve power is offered one at a time, it's always worth taking, and there's nothing to decide — so this is the one place a pop-up can be answered without weighing anything.\n\n" ..
-                               "|cffff9999The difficulty picker is otherwise left alone entirely: JustQuest never touches a tier unless you turn on Auto-Select Tier below.|r",
+                        name = "A delve power is offered one at a time, it's always worth taking, and there's nothing to decide — so it can be answered without weighing anything.\n\n" ..
+                               WARN .. "The difficulty picker is otherwise left alone entirely: JustQuest never touches a tier unless you turn on Auto-Select Tier below.|r",
                     },
 
                     powers = {
@@ -265,7 +281,7 @@ local function CreateInstanceOptions()
                         order = 1,
                         fontSize = "medium",
                         name = "Anima powers are a real choice, but a repetitive one with a knowable answer — so JustQuest can answer it from a curated list of which powers are worth taking and which are traps.\n\n" ..
-                               "|cffff9999When nothing on offer is worth taking, the choice goes back to you rather than defaulting to whatever came first.|r",
+                               WARN .. "When nothing on offer is worth taking, the choice goes back to you rather than defaulting to whatever came first.|r",
                     },
 
                     powers = {
@@ -298,11 +314,12 @@ local function CreateInstanceOptions()
                                 type = "select",
                                 name = "Pick For",
                                 desc = "Which powers count as good.\n\n" ..
-                                       "|cffffd100Clearing|r favours damage and staying alive.\n" ..
-                                       "|cffffd100Farming|r favours movement speed and Phantasma, for fast repeat runs.",
+                                       EM .. "Clearing|r favours damage and staying alive.\n" ..
+                                       EM .. "Farming|r favours movement speed and Phantasma, for fast repeat runs.",
                                 order = 3,
                                 disabled = torghastNoPower,
                                 values = { normal = "Clearing", farming = "Farming" },
+                                sorting = { "normal", "farming" },
                                 get = CreateAccessor("torghast", "mode").get,
                                 set = CreateAccessor("torghast", "mode").set,
                             },
@@ -310,7 +327,7 @@ local function CreateInstanceOptions()
                                 type = "toggle",
                                 name = "Reroll A Bad Offering",
                                 desc = "Spend one of your rerolls when nothing on offer is worth taking.\n\n" ..
-                                       "|cffff9999Rerolls are limited. Left off, a bad offering is handed back to you instead.|r",
+                                       WARN .. "Rerolls are limited. Left off, a bad offering is handed back to you instead.|r",
                                 width = "full",
                                 order = 4,
                                 disabled = torghastNoPower,
@@ -354,15 +371,15 @@ local function CreateGearOptions()
     return {
         type = "group",
         name = "Gear",
-        order = 3.5,  -- after NPCs, before Containers
+        order = 3,
         args = {
             intro = {
                 type = "description",
                 order = 1,
                 fontSize = "medium",
-                name = "Scores the gear in your bags with Pawn and, when it finds an upgrade for your current spec, prompts you to equip it — one at a time, with |cff00ff00Equip|r / |cffff5555Never|r. " ..
+                name = "Scores the gear in your bags with Pawn and, when it finds an upgrade for your current spec, prompts you to equip it — one at a time, with " .. GOOD .. "Equip|r / " .. DANGER .. "Never|r. " ..
                        "Turn on Auto-Equip to skip the prompt and just equip.\n\n" ..
-                       "|cffff9999Needs a Pawn scale for the spec you're playing.|r  Trinkets aren't scored (a Pawn limitation).",
+                       WARN .. "Needs a Pawn scale for the spec you're playing.|r  Trinkets aren't scored (a Pawn limitation).",
             },
 
             settings = {
@@ -375,15 +392,17 @@ local function CreateGearOptions()
                         type = "toggle",
                         name = "Recommend Upgrades",
                         desc = "Scan your bags and prompt you to equip gear upgrades for your current spec.",
+                        width = "full",
                         order = 1,
                         get = CreateAccessor("gearSwap", "advisorEnabled").get,
                         set = CreateAccessor("gearSwap", "advisorEnabled").set,
                     },
                     autoEquip = {
                         type = "toggle",
-                        name = "Auto-Equip (skip the prompt)",
-                        desc = "Equip recommended upgrades automatically — as you loot, and the best gear for a spec when you switch to it (out of combat). " ..
+                        name = "Auto-Equip",
+                        desc = "Skip the prompt: equip recommended upgrades automatically — as you loot, and the best gear for a spec when you switch to it (out of combat). " ..
                                "Bind-on-equip items are never auto-equipped, so nothing binds by surprise.",
+                        width = "full",
                         order = 2,
                         disabled = advisorDisabled,
                         get = CreateAccessor("gearSwap", "autoEquip").get,
@@ -393,6 +412,7 @@ local function CreateGearOptions()
                         type = "toggle",
                         name = "On-Screen Prompts & Sound",
                         desc = "Show the pop-up prompt (with a sound). Off = chat only, and the config panel below.",
+                        width = "full",
                         order = 3,
                         disabled = advisorDisabled,
                         get = CreateAccessor("gearSwap", "announce").get,
@@ -415,7 +435,7 @@ local function CreateGearOptions()
                                "A speed or utility set is worn for what it does, not its item level, so " ..
                                "suggesting a higher-item-level replacement every time one drops is just noise. " ..
                                "Only the slots filled by set gear are held back — everything else is still offered.\n\n" ..
-                               "|cffff9999Turn this off if you keep your everyday gear saved as a set.|r",
+                               WARN .. "Turn this off if you keep your everyday gear saved as a set.|r",
                         width = "full",
                         order = 5,
                         disabled = advisorDisabled,
@@ -439,7 +459,7 @@ local function CreateGearOptions()
                         name = "Weight Item Level (Pawn)",
                         desc = "Adds Item Level to Pawn as a weightable stat, so a big item-level jump counts even when secondary stats are flat. " ..
                                "After enabling, give it a weight in your Pawn scale (e.g. ItemLevel=5) or in Pawn's stat list under \"JustQuest\".\n\n" ..
-                               "|cffff9999Affects all Pawn scoring — tooltips, reward picks, and the advisor — and modifies Pawn globally.|r",
+                               WARN .. "Affects all Pawn scoring — tooltips, reward picks, and the advisor — and modifies Pawn globally.|r",
                         width = "full",
                         order = 7,
                         get = CreateAccessor("gearSwap", "weightItemLevel").get,
@@ -463,7 +483,7 @@ local function CreateGearOptions()
                             local advisor = JustQuest.Core.GetModule("GearAdvisor")
                             local ps = JustQuest.Core.GetModule("PawnScoring")
                             if PawnGetItemData == nil then
-                                return "|cff808080Pawn is not installed — the advisor needs Pawn to score gear.|r"
+                                return MUTED .. "Pawn is not installed — the advisor needs Pawn to score gear.|r"
                             end
                             local recs = advisor and advisor.GetRecommendations() or {}
                             local count = 0
@@ -473,18 +493,18 @@ local function CreateGearOptions()
                                 -- with — not the loot spec, or this reports "no scale" for
                                 -- a spec the advisor never consulted.
                                 if ps and ps.HasScaleForSpec and not ps.HasScaleForSpec(GetSpecialization()) then
-                                    return "|cffff8800No active Pawn scale for this spec — set one up in Pawn (usually automatic). Run |r|cffffff00/jq gear check|r|cffff8800 for details.|r"
+                                    return WARN .. "No active Pawn scale for this spec — set one up in Pawn (usually automatic). Run |r" .. EM .. "/jq gear check|r" .. WARN .. " for details.|r"
                                 end
-                                return "|cffaaaaaaNo upgrades in your bags for this spec right now.|r"
+                                return MUTED .. "No upgrades in your bags for this spec right now.|r"
                             end
-                            local s = string.format("|cffffcc00%d upgrade%s available:|r\n", count, count == 1 and "" or "s")
+                            local s = string.format(EM .. "%d upgrade%s available:|r\n", count, count == 1 and "" or "s")
                             for _, rec in pairs(recs) do
                                 local pctStr = (ps and ps.FormatUpgrade(rec.pct)) or "upgrade"
                                 -- No "replaces" for an empty slot (Pawn's no-baseline sentinel %).
                                 local replaces = (rec.existingLink and rec.pct and rec.pct < 99)
-                                    and ("  |cff888888replaces " .. rec.existingLink .. "|r") or ""
-                                local boe = rec.bound and "" or "  |cffff8800(BoE — equip by hand)|r"
-                                s = s .. "• " .. (rec.link or "?") .. "  |cff00ff00" .. pctStr .. "|r" .. replaces .. boe .. "\n"
+                                    and ("  " .. MUTED .. "replaces " .. rec.existingLink .. "|r") or ""
+                                local boe = rec.bound and "" or ("  " .. WARN .. "(BoE — equip by hand)|r")
+                                s = s .. "• " .. (rec.link or "?") .. "  " .. GOOD .. pctStr .. "|r" .. replaces .. boe .. "\n"
                             end
                             return s
                         end,
@@ -502,6 +522,7 @@ local function CreateGearOptions()
                     rescan = {
                         type = "execute",
                         name = "Rescan Bags",
+                        desc = "Scan your bags for upgrades again now.",
                         order = 3,
                         func = function()
                             local advisor = JustQuest.Core.GetModule("GearAdvisor")
@@ -510,7 +531,7 @@ local function CreateGearOptions()
                     },
                     dismissAll = {
                         type = "execute",
-                        name = "Dismiss (until reload)",
+                        name = "Dismiss All",
                         desc = "Ignore the current suggestions until you reload.",
                         order = 4,
                         func = function()
@@ -540,12 +561,12 @@ local function CreateGearOptions()
                                 if type(v) == "string" then names[#names + 1] = v end
                             end
                             if n == 0 then
-                                return "|cffaaaaaaItems you choose \"Never\" on appear here.|r"
+                                return MUTED .. "Items you choose \"Never\" on appear here.|r"
                             end
                             if #names > 0 then
-                                return "|cff888888Never recommending: " .. table.concat(names, ", ") .. "|r"
+                                return MUTED .. "Never recommending: " .. table.concat(names, ", ") .. "|r"
                             end
-                            return "|cff888888Never recommending " .. n .. " item(s).|r"
+                            return MUTED .. "Never recommending " .. n .. " item(s).|r"
                         end,
                     },
                     clearIgnored = {
@@ -576,12 +597,13 @@ local function CreateQuestOptions()
     return {
         type = "group",
         name = "Quests",
-        order = 2,
+        order = 1,
         args = {
-            header = {
-                type = "header",
-                name = "Quest Automation",
+            intro = {
+                type = "description",
                 order = 1,
+                fontSize = "medium",
+                name = "Which quests are accepted for you, and how their rewards are chosen.",
             },
             questTypes = {
                 type = "group",
@@ -589,19 +611,10 @@ local function CreateQuestOptions()
                 inline = true,
                 order = 2,
                 args = {
-                    acceptEscort = {
-                        type = "toggle",
-                        name = "Accept Escort Quests",
-                        desc = "Accept escort/follow quests.\n\n|cffff9999Detection unavailable:|r No escort-quest API exists in modern WoW. This toggle is reserved for future use.",
-                        order = 1,
-                        disabled = true,
-                        get = CreateAccessor("quest", "acceptEscort").get,
-                        set = CreateAccessor("quest", "acceptEscort").set,
-                    },
                     acceptPvP = {
-                        type = "toggle", 
+                        type = "toggle",
                         name = "Accept PvP Quests",
-                        desc = "Accept PvP and War Mode quests. |cffff9999Warning:|r May flag you for PvP.",
+                        desc = "Accept PvP and War Mode quests.\n\n" .. WARN .. "May flag you for PvP.|r",
                         order = 2,
                         get = CreateAccessor("quest", "acceptPvP").get,
                         set = CreateAccessor("quest", "acceptPvP").set,
@@ -710,11 +723,11 @@ local function CreateQuestOptions()
                         type = "description",
                         name = function()
                             if PawnGetItemData == nil then
-                                return "|cff808080Pawn is not installed. Upgrade comparison uses item level.|r"
+                                return MUTED .. "Pawn is not installed. Upgrade comparison uses item level.|r"
                             end
                             local config = JustQuest.Core.GetModule("Config")
                             if config and config.Get("quest", "usePawnScoring") == false then
-                                return "|cffff8800Pawn installed but scoring disabled. Using item level.|r"
+                                return WARN .. "Pawn installed but scoring disabled. Using item level.|r"
                             end
                             local lootSpecID = GetLootSpecialization and GetLootSpecialization() or 0
                             local useLootSpec = not config or config.Get("quest", "pawnUseLootSpec") ~= false
@@ -726,7 +739,7 @@ local function CreateQuestOptions()
                                 local _, specName = GetSpecializationInfo and GetSpecializationInfo(GetSpecialization())
                                 specNote = " (active spec: " .. (specName or "?") .. ")"
                             end
-                            return "|cff00ff00Pawn active" .. specNote .. ".|r"
+                            return GOOD .. "Pawn active" .. specNote .. ".|r"
                         end,
                         order = 5,
                         fontSize = "small",
@@ -745,8 +758,7 @@ local function CreateQuestOptions()
                 args = {
                     info = {
                         type = "description",
-                        name = "|cffffcc00Blocked Quests:|r Quests in this list are never auto-accepted.\n" ..
-                               "Add by quest ID.",
+                        name = "Quests in this list are never auto-accepted. Add by quest ID.",
                         order = 1,
                         fontSize = "medium",
                     },
@@ -804,10 +816,10 @@ local function CreateQuestOptions()
                             for _ in pairs(blocked) do count = count + 1 end
                             
                             if count == 0 then
-                                return "|cffaaaaaaNone.|r"
+                                return MUTED .. "Quests you block appear here.|r"
                             end
-                            
-                            local s = string.format("|cffffcc00Blocked quests (%d):|r\n", count)
+
+                            local s = string.format(EM .. "Blocked quests (%d):|r\n", count)
                             for questID, _ in pairs(blocked) do
                                 local questTitle = C_QuestLog and C_QuestLog.GetTitleForQuestID(questID) or "Unknown"
                                 s = s .. string.format("• %s (ID: %d)\n", questTitle, questID)
@@ -825,8 +837,8 @@ local function CreateQuestOptions()
                 args = {
                     info = {
                         type = "description",
-                        name = "|cffffcc00Currency Whitelist:|r Quests here are allowed to auto-spend currencies " ..
-                               "without prompting. Use |cff00ff00Always Allow|r in the confirmation popup to add entries.\n" ..
+                        name = "Quests here are allowed to auto-spend currencies " ..
+                               "without prompting. Use " .. GOOD .. "Always Allow|r in the confirmation popup to add entries.\n" ..
                                "Select a quest below to remove it.",
                         order = 1,
                         fontSize = "medium",
@@ -869,10 +881,10 @@ local function CreateQuestOptions()
                             for _ in pairs(whitelist) do count = count + 1 end
 
                             if count == 0 then
-                                return "|cffaaaaaaNone.|r"
+                                return MUTED .. "Quests you Always Allow appear here.|r"
                             end
 
-                            local s = string.format("|cffffcc00Whitelisted quests (%d):|r\n", count)
+                            local s = string.format(EM .. "Whitelisted quests (%d):|r\n", count)
                             for questID, entry in pairs(whitelist) do
                                 local title = (type(entry) == "table" and entry.title) or
                                               (C_QuestLog and C_QuestLog.GetTitleForQuestID(questID)) or
@@ -897,13 +909,18 @@ local function CreateGossipOptions()
     return {
         type = "group",
         name = "NPCs",
-        order = 3,
+        order = 2,
         args = {
-            header = { type = "header", name = "NPC Interactions", order = 1 },
+            intro = {
+                type = "description",
+                order = 1,
+                fontSize = "medium",
+                name = "How gossip menus are handled when you talk to NPCs.",
+            },
 
             aggressive = {
                 type = "toggle",
-                name = "Aggressive gossip (auto-advance to quests)",
+                name = "Aggressive Gossip",
                 desc = "Automatically clicks through gossip to reach quests: takes the first available option in ANY menu, not only quest-flagged or single-service ones.\n\n" ..
                        "Still safe: options that cost money or need a typed code stop for you (the server intercepts them), blacklisted keywords are skipped, and holding Shift/Ctrl/Alt lets you read a menu manually.\n\n" ..
                        "Turn OFF for conservative behavior — only quest-indicated dialog and single Blizzard-service steps are automated; other menus are left for you.",
@@ -931,11 +948,10 @@ local function CreateGossipOptions()
                 args = {
                     rulesInfo = {
                         type = "description",
-                        name = "|cffffcc00Whitelist vs Blacklist:|r\n" ..
-                               "• |cff00ff00Whitelist:|r Selected immediately (still respects repeat protection).\n" ..
-                               "• |cffff0000Blacklist:|r Matching options are skipped; addon picks next safe option.\n\n" ..
-                               "|cffffcc00Note:|r With Aggressive gossip on (default), any gossip option is auto-advanced to reach quests, except forced menus and money/coded options. With it off, only quest-indicated dialog and single service steps are automated.\n",
-                        order = 1, 
+                        name = "• " .. GOOD .. "Whitelist:|r Selected immediately (still respects repeat protection).\n" ..
+                               "• " .. DANGER .. "Blacklist:|r Matching options are skipped; addon picks next safe option.\n\n" ..
+                               EM .. "Note:|r With Aggressive Gossip on (default), any gossip option is auto-advanced to reach quests, except forced menus and money/coded options. With it off, only quest-indicated dialog and single service steps are automated.\n",
+                        order = 1,
                         fontSize = "medium",
                     },
 
@@ -996,9 +1012,9 @@ local function CreateGossipOptions()
                                     local config = JustQuest.Core.GetModule("Config")
                                     local wl = config and config.Get("gossip", "whitelist") or {}
                                     if #wl == 0 then
-                                        return "|cffaaaaaaNone.|r"
+                                        return MUTED .. "Trusted gossip text you add appears here.|r"
                                     end
-                                    local s = "|cffffcc00Current whitelist:|r\n"
+                                    local s = EM .. "Current whitelist:|r\n"
                                     for i = 1, #wl do 
                                         s = s .. "• " .. wl[i] .. "\n" 
                                     end
@@ -1065,9 +1081,9 @@ local function CreateGossipOptions()
                                     local config = JustQuest.Core.GetModule("Config")
                                     local bl = config and config.Get("gossip", "blacklist") or {}
                                     if #bl == 0 then
-                                        return "|cffaaaaaaNone.|r"
+                                        return MUTED .. "Blocked keywords you add appear here.|r"
                                     end
-                                    local s = "|cffffcc00Current blacklist:|r\n"
+                                    local s = EM .. "Current blacklist:|r\n"
                                     for i = 1, #bl do 
                                         s = s .. "• " .. bl[i] .. "\n" 
                                     end
@@ -1102,14 +1118,15 @@ local function CreateContainerOptions()
     return {
         type = "group",
         name = "Containers",
-        order = 4,
+        order = 5,
         args = {
-            header = {
-                type = "header",
-                name = "Container Auto-Opening",
+            intro = {
+                type = "description",
                 order = 1,
+                fontSize = "medium",
+                name = "Opens containers sitting in your bags for you, using the mode and lists below.",
             },
-            
+
             settings = {
                 type = "group",
                 name = "Settings",
@@ -1118,7 +1135,7 @@ local function CreateContainerOptions()
                 args = {
                     enabled = {
                         type = "toggle",
-                        name = "Enable",
+                        name = "Auto-Open Containers",
                         desc = "Auto-open whitelisted containers.",
                         order = 1,
                         get = CreateAccessor("containers", "enabled").get,
@@ -1142,28 +1159,11 @@ local function CreateContainerOptions()
                         order = 3,
                         values = {
                             list = "My list only",
-                            safe = "Safe containers (clams, chests, coin sacks)",
-                            all  = "Everything openable (incl. lockboxes)",
+                            safe = "Openable containers (clams, chests, coin sacks)",
                         },
-                        sorting = { "list", "safe", "all" },
+                        sorting = { "list", "safe" },
                         get = CreateAccessor("containers", "mode").get,
                         set = CreateAccessor("containers", "mode").set,
-                    },
-                    rogueAutoPick = {
-                        type = "toggle",
-                        name = "Auto-Pick Lockboxes (Rogue)",
-                        desc = "Rogues: cast Pick Lock on pickable lockboxes, then open them. Only applies in \"Everything openable\" mode.",
-                        order = 4,
-                        hidden = function()
-                            local _, class = UnitClass("player")
-                            return class ~= "ROGUE"
-                        end,
-                        disabled = function()
-                            local config = JustQuest.Core.GetModule("Config")
-                            return not (config and config.Get("containers", "mode") == "all")
-                        end,
-                        get = CreateAccessor("containers", "rogueAutoPick").get,
-                        set = CreateAccessor("containers", "rogueAutoPick").set,
                     },
                 }
             },
@@ -1176,8 +1176,8 @@ local function CreateContainerOptions()
                 args = {
                     listsInfo = {
                         type = "description",
-                        name = "|cffffcc00How to add containers:|r\n" ..
-                               "• Click an Add box, then |cff00ff00Shift-Click|r a container in your bags\n" ..
+                        name = EM .. "How to add containers:|r\n" ..
+                               "• Click an Add box, then " .. GOOD .. "Shift-Click|r a container in your bags\n" ..
                                "• Or enter the item ID manually\n",
                         order = 1,
                         fontSize = "medium",
@@ -1197,25 +1197,25 @@ local function CreateContainerOptions()
                                 order = 1,
                                 get = function() return "" end,
                                 set = function(info, value)
-                    -- Try to extract item ID from item link first (format: |cffffffff|Hitem:12345:...|h[Name]|h|r)
-                    local itemID = tonumber(value:match("item:(%d+)"))
-                    
-                    -- If not a link, try to parse as direct number
-                    if not itemID then
-                        itemID = tonumber(value)
-                    end
-                    
-                    if itemID then
-                        local config = JustQuest.Core.GetModule("Config")
-                        if config and config.AddContainerWhitelist then
-                            local itemName = C_Item and C_Item.GetItemNameByID(itemID) or nil
-                            config.AddContainerWhitelist(itemID, itemName)
-                            if ACR then ACR:NotifyChange("JustQuest") end
-                        end
-                    else
-                        print("|cff00ccffJustQuest:|r |cffff0000Invalid input - enter Item ID or Shift-Click a container|r")
-                    end
-                end,
+                                    -- Try to extract item ID from item link first (format: |cffffffff|Hitem:12345:...|h[Name]|h|r)
+                                    local itemID = tonumber(value:match("item:(%d+)"))
+
+                                    -- If not a link, try to parse as direct number
+                                    if not itemID then
+                                        itemID = tonumber(value)
+                                    end
+
+                                    if itemID then
+                                        local config = JustQuest.Core.GetModule("Config")
+                                        if config and config.AddContainerWhitelist then
+                                            local itemName = C_Item and C_Item.GetItemNameByID(itemID) or nil
+                                            config.AddContainerWhitelist(itemID, itemName)
+                                            if ACR then ACR:NotifyChange("JustQuest") end
+                                        end
+                                    else
+                                        print("|cff00ccffJustQuest:|r " .. DANGER .. "Invalid input - enter Item ID or Shift-Click a container|r")
+                                    end
+                                end,
                             },
                             
                             wlRemove = {
@@ -1255,10 +1255,10 @@ local function CreateContainerOptions()
                                     for _ in pairs(wl) do count = count + 1 end
                                     
                                     if count == 0 then
-                                        return "|cffaaaaaaNone.|r"
+                                        return MUTED .. "Containers you whitelist appear here.|r"
                                     end
-                                    
-                                    local s = string.format("|cffffcc00Current whitelist (%d):|r\n", count)
+
+                                    local s = string.format(EM .. "Current whitelist (%d):|r\n", count)
                                     for itemID, itemName in pairs(wl) do
                                         local displayName = type(itemName) == "string" and itemName or "Unknown"
                                         s = s .. string.format("• %s (ID: %d)\n", displayName, itemID)
@@ -1299,7 +1299,7 @@ local function CreateContainerOptions()
                                             if ACR then ACR:NotifyChange("JustQuest") end
                                         end
                                     else
-                                        print("|cff00ccffJustQuest:|r |cffff0000Invalid input - enter Item ID or Shift-Click a container|r")
+                                        print("|cff00ccffJustQuest:|r " .. DANGER .. "Invalid input - enter Item ID or Shift-Click a container|r")
                                     end
                                 end,
                             },
@@ -1341,10 +1341,10 @@ local function CreateContainerOptions()
                                     for _ in pairs(bl) do count = count + 1 end
                                     
                                     if count == 0 then
-                                        return "|cffaaaaaaNone.|r"
+                                        return MUTED .. "Containers you blacklist appear here.|r"
                                     end
-                                    
-                                    local s = string.format("|cffffcc00Current blacklist (%d):|r\n", count)
+
+                                    local s = string.format(EM .. "Current blacklist (%d):|r\n", count)
                                     for itemID, itemName in pairs(bl) do
                                         local displayName = type(itemName) == "string" and itemName or "Unknown"
                                         s = s .. string.format("• %s (ID: %d)\n", displayName, itemID)
@@ -1364,24 +1364,20 @@ local function CreateAdvancedOptions()
     return {
         type = "group",
         name = "Advanced",
-        order = 5,  -- After Containers, before Profiles
+        order = 6,
         args = {
-            header = {
-                type = "header", 
-                name = "Advanced Configuration",
-                order = 1,
-            },
-            warning = {
+            intro = {
                 type = "description",
-                name = "|cffffcc00Advanced settings.|r Tune only if needed.\n",
-                order = 2,
+                name = "Debugging and timing controls. The defaults are right for almost everyone.",
+                order = 1,
                 fontSize = "medium",
             },
             debugMode = {
                 type = "toggle",
-                name = "Debug Mode", 
+                name = "Debug Mode",
                 desc = "Show debug messages in chat.",
-                order = 3,
+                width = "full",
+                order = 2,
                 get = CreateAccessor(nil, "debugMode").get,
                 set = CreateAccessor(nil, "debugMode").set,
             },
@@ -1389,21 +1385,18 @@ local function CreateAdvancedOptions()
                 type = "group",
                 name = "Safety Features (Always Active)",
                 inline = true,
-                order = 3.5,
+                order = 3,
                 args = {
                     safetyDesc = {
                         type = "description",
-                        name = "|cff88ff88Built-in protections:|r\n\n" ..
-                               "• Automates only quest-indicated dialog (quest flags or server-colored text)\n" ..
-                               "• Plain gossip with no quest indicators is never automated\n" ..
-                               "• Single service options (vendor, trainer) auto-selected for convenience\n" ..
-                               "• Multiple service options halt for manual selection\n" ..
-                               "• Blacklist skips dangerous keywords (teleports, story skips, etc.)\n" ..
-                               "• Warning colors (red/orange) halt automation\n" ..
-                               "• Multiple server-colored options halt for manual choice\n" ..
-                               "• Prevents infinite gossip loops (repeat protection)\n" ..
-                               "• Blocks all StaticPopup dialogs (delves, dungeons, confirmations)\n" ..
-                               "• Pauses when modifier key is held\n",
+                        name = GOOD .. "Built-in protections:|r\n\n" ..
+                               "• Options that cost money or need a typed code always stop for you (the server flags them)\n" ..
+                               "• Menus the server forces open are shown, never answered for you\n" ..
+                               "• Blacklisted keywords (teleports, story skips, etc.) are skipped in every mode\n" ..
+                               "• Repeat and chain-depth guards prevent gossip loops\n" ..
+                               "• Holding Shift, Ctrl, or Alt pauses automation so you can read a menu\n" ..
+                               "• Confirmation pop-ups are handed back to you — only the Delve and Torghast power choices you opt into are answered\n" ..
+                               "• With Aggressive Gossip off, only quest-indicated dialog and single service steps are automated\n",
                         order = 1,
                         fontSize = "medium",
                     },
@@ -1452,7 +1445,6 @@ local function BuildOptionsTable()
         type = "group",
         name = "JustQuest",
         args = {
-            general = CreateGeneralOptions(),
             gear = CreateGearOptions(),
             instances = CreateInstanceOptions(),
             quests = CreateQuestOptions(),
@@ -1487,17 +1479,17 @@ end
 local function EnsureRegistered()
     if not uiCache.registered and ACR then
         ACR:RegisterOptionsTable("JustQuest", BuildOptionsTable())
+        ACR:RegisterOptionsTable("JustQuest-Landing", CreateLandingOptions())
         uiCache.registered = true
     end
 
     if not uiCache.addedToBlizz and ACD and uiCache.registered then
-        uiCache.blizzFrames["JustQuest"] = ACD:AddToBlizOptions("JustQuest", "JustQuest")
-        uiCache.blizzFrames["JustQuest-General"] = ACD:AddToBlizOptions("JustQuest", "General", "JustQuest", "general")
+        -- The root panel is a slim landing page (overview + master switches); each
+        -- category is its own child panel, so nothing renders twice.
+        uiCache.blizzFrames["JustQuest"] = ACD:AddToBlizOptions("JustQuest-Landing", "JustQuest")
         uiCache.blizzFrames["JustQuest-Quests"] = ACD:AddToBlizOptions("JustQuest", "Quests", "JustQuest", "quests")
         uiCache.blizzFrames["JustQuest-Gossip"] = ACD:AddToBlizOptions("JustQuest", "NPCs", "JustQuest", "gossip")
         uiCache.blizzFrames["JustQuest-Gear"] = ACD:AddToBlizOptions("JustQuest", "Gear", "JustQuest", "gear")
-        -- Previously unreachable from the Blizzard panel: the delve options existed only
-        -- behind /jq config. Added here so instance automation is discoverable at all.
         uiCache.blizzFrames["JustQuest-Instances"] = ACD:AddToBlizOptions("JustQuest", "Instances", "JustQuest", "instances")
         uiCache.blizzFrames["JustQuest-Containers"] = ACD:AddToBlizOptions("JustQuest", "Containers", "JustQuest", "containers")
         uiCache.blizzFrames["JustQuest-Advanced"] = ACD:AddToBlizOptions("JustQuest", "Advanced", "JustQuest", "advanced")
@@ -1522,13 +1514,9 @@ function ConfigUI.ShowConfig()
 
     -- Open the panel
     local rootFrame = uiCache.blizzFrames["JustQuest"]
-    
+
     if Settings and Settings.OpenToCategory and rootFrame and rootFrame.categoryID then
         Settings.OpenToCategory(rootFrame.categoryID)
-    elseif _G["InterfaceOptionsFrame_OpenToCategory"] and rootFrame then
-        local openFunc = _G["InterfaceOptionsFrame_OpenToCategory"]
-        openFunc(rootFrame)
-        openFunc(rootFrame) -- Sometimes needs to be called twice
     elseif ACD then
         ACD:Open("JustQuest")
     else
