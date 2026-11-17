@@ -1,4 +1,4 @@
-## Interface: 16001
+## Interface: 120105, 16001
 ## Title: JustQuest
 ## Notes: Automates quest acceptance, turn-in, gossip selection, reward picking, and required quest-loot containers
 ## Author: wealdly

@@ -38,6 +38,29 @@
   scores. Weapon bonuses from your race and talents count too: a human's swords, an orc's
   axes, a dwarf's maces, and talents like Two-Handed Weapon Specialization tip the choice
   toward those weapon types when the alternatives are close.
+- Gear advisor on WoW Forever: pick which Pawn scale JustQuest uses for this character
+  ("Pawn Scale (WoW Forever)" in the Gear tab), or leave it on JustQuest's class and role
+  weights. Gear with effects JustQuest can't score (on-use, on-equip, procs, set bonuses),
+  unknown stats or data that hasn't loaded is kept instead of being guessed at, and lighter
+  armour counts as an upgrade when it scores higher.
+- New option: "Required Quest-Loot Containers" (Containers, on by default). Opens a container
+  in your bags when it supplies an unfinished objective of a quest you've accepted, including
+  one you were already carrying when you took the quest.
+- NPC windows with a single option that isn't conversation (a trainer's "show me your skills",
+  a lone service) are now taken in conservative mode too, and on menus the game forces open.
+  Never while the NPC has quest work for you, never a conversation option, and never inside an
+  instance with a group.
+- Menus the game forces open (it asks you to choose) no longer have their quest options picked
+  for you.
+- Quest windows, gossip and the next quest in a chain now move at an even pace in normal mode
+  (about a quarter of a second between steps) instead of some answering instantly and others
+  after a pause. Fast mode is unchanged.
+- Turn-ins that need items bound to the quest are completed for you even when those items
+  aren't in the "quest item" category. Ordinary materials and gear still ask first.
+- Multi-choice rewards that include a recipe, book, profession item, collectible, currency or
+  anything JustQuest can't assess are left for you to pick, checked again at the moment of
+  choosing.
+- Debug mode reports any automation step that takes 2 ms or longer.
 - Gear advisor and quest rewards only offer weapons and armour you've learned to use. On WoW
   Forever a warrior isn't offered a bow before training Bows, and a hunter isn't offered mail
   before 40. Once you train the skill, the gear is offered straight away.
@@ -53,8 +76,8 @@
     bracers is just a warrior with better bracers.
   - Bows, guns, crossbows, wands, thrown weapons and relics are compared against and equipped
     into the ranged slot, not the main hand.
-  - It no longer suggests Intellect-only gear to warriors and rogues, or Strength and Agility
-    gear to mages, priests and warlocks. Paladins, shamans, druids and hunters are unaffected.
+  - Gear with another role's main stat (Intellect on a warrior, Strength on a mage) is scored
+    by your class and role weights rather than offered or rejected on that stat alone.
   - Pawn-only settings are hidden there.
 - Gear advisor on WoW Forever: recommendations work. The advisor's background check stopped
   with an error on every scan there, so nothing was ever suggested or equipped even though
@@ -105,4 +128,15 @@
 - Auto-open no longer tries to open locked boxes, so the red "It's locked!" message
   no longer appears when logging in with a lockbox in your bags. A box whose lock has
   already been picked still opens normally.
+- Approving a currency cost ("Spend" / "Always Allow") only goes ahead if the same quest is
+  still open and automation is still allowed; a stale approval spends nothing.
+- A quest window or shared-quest prompt without a readable quest ID is left for you instead
+  of being accepted unchecked, and quests your filters block are no longer completed from a
+  progress or reward window that opens directly.
+- Older-style quest greeting windows use the same quest filters as the modern ones, so a
+  blocked turn-in no longer stops an allowed one beside it.
+- A gossip menu JustQuest left for you is looked at again as soon as its options change, even
+  if the number of options stays the same.
+- Picking up an area or bonus quest by walking into it no longer makes the next NPC you talk to
+  wait for a follow-up quest that isn't coming.
 

@@ -15,6 +15,7 @@ ignore:
     - UNRELEASED.md
     - Documentation
     - Debug
+    - Tests
     - tools
     - AGENTS.md
     - CLAUDE.md

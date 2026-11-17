@@ -40,6 +40,10 @@ IsPlayerSpell = function(id) return known[id] or false end
 CanDualWield = function() return dualWield end
 GetInventoryItemLink = function(_, slot) return equipped[slot] end
 GetSpecialization = function() return nil end   -- Forever-like: no spec primary stat
+-- ClassWeights registers its invalidation events on Forever at load; nothing fires them here.
+CreateFrame = function()
+    return { RegisterEvent = function() end, SetScript = function() end }
+end
 C_Item = {
     GetItemInfoInstant = function(link)
         local i = ITEMS[link]; if not i then return nil end
@@ -49,6 +53,13 @@ C_Item = {
     GetItemStats = function(link) return ITEMS[link] and ITEMS[link][5] or nil end,
     GetDetailedItemLevelInfo = function(link) return ITEMS[link] and ITEMS[link][4] end,
 }
+
+-- The Forever scorer only scores gear it can prove has no use/equip/proc effect; without these
+-- it keeps the item ("effect detection unavailable"). Test items carry no effects.
+Enum = Enum or {}
+Enum.TooltipDataLineType = { ItemSpellTriggerOnUse = 30, ItemSpellTriggerOnEquip = 31,
+                             ItemSpellTriggerOnProc = 32 }
+C_Item.GetItemSpell = function() return nil end
 
 -- A config stub that honours module/key (roles are stored through it).
 local store = {}
@@ -131,13 +142,14 @@ tooltipPending = true
 check("tooltip not ready -> nil", GD.ItemArmor("thousand"), nil)
 tooltipPending = false
 
--- Class stat rule.
+-- Class stat rule: Forever has none. Off-role primary stats are scored by the class/role weights
+-- (or the selected Pawn scale) instead of being rejected outright; see Tests/ForeverGearScoring.lua.
 class = "WARRIOR"
-check("warrior: Intellect-only ring is wrong", GD.ItemIsWrongPrimaryStat("intRing"), true)
+check("warrior: Intellect-only ring isn't rejected on Forever", GD.ItemIsWrongPrimaryStat("intRing"), false)
 check("warrior: Strength+Intellect ring is fine", GD.ItemIsWrongPrimaryStat("strIntRing"), false)
 check("warrior: no-primary cloak is fine", GD.ItemIsWrongPrimaryStat("staminaCloak"), false)
 class = "MAGE"
-check("mage: Strength mace is wrong", GD.ItemIsWrongPrimaryStat("strMace"), true)
+check("mage: Strength mace isn't rejected on Forever", GD.ItemIsWrongPrimaryStat("strMace"), false)
 check("mage: Intellect staff is fine", GD.ItemIsWrongPrimaryStat("intStaff"), false)
 class = "PALADIN"
 check("paladin (hybrid): Intellect is fine", GD.ItemIsWrongPrimaryStat("intRing"), false)
@@ -197,7 +209,8 @@ class, store = "MAGE", {}
 CW.SetRole("caster")
 check("mage: fire damage counts", CW.Score("fireBelt", 6) > 1, true)
 check("mage: shadow damage doesn't", CW.Score("shadowBelt", 6) < 0.1, true)
-check("mage: fire resistance isn't fire damage", CW.Score("fireResBelt", 6) < 0.1, true)
+-- An unrecognized stat (a resistance) makes the score unknown, so the item is kept, never scored.
+check("mage: fire resistance isn't fire damage", CW.Score("fireResBelt", 6), nil)
 class, store = "WARLOCK", {}
 CW.SetRole("caster")
 check("warlock: shadow damage counts", CW.Score("shadowBelt", 6) > 1, true)
@@ -210,8 +223,8 @@ class, store = "DRUID", {}
 CW.SetRole("melee")
 check("cat druid: weapon DPS is worth nothing", CW.Score("dagger", 16) < 0.1, true)
 
--- Statless gear ranks by required level.
-check("grey items: higher required level wins", CW.Score("greyHigh", 6) > CW.Score("greyLow", 6), true)
+-- Required level is not a stat: statless gear scores alike whatever its level.
+check("grey items: required level doesn't change the score", CW.Score("greyHigh", 6) == CW.Score("greyLow", 6), true)
 
 -- Comparisons.
 class, store = "WARRIOR", {}
@@ -248,7 +261,8 @@ CW.SetRole("melee")
 tooltipPending = true
 CW.SetRole("tank"); CW.SetRole("melee")    -- drops the score cache
 equipped = { [9] = "bracers4" }
-check("tooltip not ready: no verdict (not a wrong one)", CW.CompareToEquipped("bracers29", { 9 }), nil)
+local pending = CW.CompareToEquipped("bracers29", { 9 })
+check("tooltip not ready: no verdict (not a wrong one)", pending == nil or pending.isUpgrade == nil, true)
 tooltipPending = false
 
 -- Weapon-type bonuses: known racial / talent spells favour their weapon types.
@@ -368,6 +382,8 @@ do
             InSpecialControlState = function() return false end,
         },
         PawnScoring = { RelevantScales = function() return nil end,
+                        GetConfiguredForeverScale = function() return nil end,  -- no Pawn scale picked
+                        RelevantScale = function() return nil end,
                         FormatUpgrade = function() return "+%" end },
         GearToast = { Show = function() end, Hide = function() end },
         SafetyEngine = { IsBusy = function() return false end },
@@ -382,7 +398,7 @@ do
     store = { [".enabled"] = true, ["gearSwap.advisorEnabled"] = true, ["gearSwap.autoEquip"] = true,
               ["gearSwap.minUpgradePct"] = 3, ["gearSwap.announce"] = false }
     class = "WARRIOR"
-    local _, _, cw, mods = Load(true, { "Engines/GearAdvisor.lua" }, stubs)
+    local _, _, cw, mods = Load(true, { "Services/GearScoring.lua", "Engines/GearAdvisor.lua" }, stubs)
     local GA = mods.GearAdvisor
 
     -- Real links carry an item ID (the advisor keys on it), so alias the test bracers.
