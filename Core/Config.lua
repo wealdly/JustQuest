@@ -92,14 +92,16 @@ function Config.Set(module, key, value)
         end
     end
     
-    if module == "containers" and (key == "whitelist" or key == "blacklist" or key == "enabled" or key == "mode") then
+    if module == "containers" and (key == "whitelist" or key == "blacklist" or key == "enabled"
+                                   or key == "mode" or key == "openQuestLoot") then
         local containerEngine = JustQuest.Core.GetModule("ContainerEngine")
         if containerEngine and containerEngine.RefreshConfigCache then
             containerEngine.RefreshConfigCache()
         end
     end
 
-    if module == "gearSwap" and (key == "advisorEnabled" or key == "minUpgradePct") and value then
+    if module == "gearSwap" and (key == "advisorEnabled" or key == "minUpgradePct"
+                                 or key == "foreverPawnScales") then
         local advisor = JustQuest.Core.GetModule("GearAdvisor")
         if advisor and advisor.RescanNow then
             advisor.RescanNow()

@@ -389,7 +389,8 @@ local function CreateGearOptions()
                 name = "Scores the gear in your bags and, when it finds an upgrade for your current spec, prompts you to equip it — one at a time, with " .. GOOD .. "Equip|r / " .. DANGER .. "Never|r. " ..
                        "Turn on Auto-Equip to skip the prompt and just equip.\n\n" ..
                        (JustQuest.Constants.IS_FOREVER
-                           and "Upgrades are judged on item level, after filtering out gear your class shouldn't wear.\n\n"
+                           and "Upgrades use estimated class/role stat scores by default. Select a Pawn scale below to use its weights instead. "
+                               .. "Score percentages are not DPS or survival gains; unmodeled effects are kept for manual review.\n\n"
                            or "Pawn does the scoring when it's installed with a scale for the spec you're playing. Without it, upgrades are judged on item level and the prompt says so.\n\n") ..
                        WARN .. "Trinkets aren't scored.|r",
             },
@@ -414,7 +415,7 @@ local function CreateGearOptions()
                     role = {
                         type = "select",
                         name = "Role (this character)",
-                        desc = "Which stats count when comparing gear. Hybrids pick melee or caster damage — "
+                        desc = "Which stats count when JustQuest class/role weights are selected. Hybrids pick melee or caster damage — "
                             .. "an Enhancement and an Elemental shaman want opposite gear. "
                             .. "Type /jq gear stats to see how your equipped gear scores.",
                         order = 1.5,
@@ -433,6 +434,30 @@ local function CreateGearOptions()
                         set = function(_, value)
                             local cw = JustQuest.Core.GetModule("ClassWeights")
                             if cw then cw.SetRole(value) end
+                        end,
+                    },
+                    foreverPawnScale = {
+                        type = "select",
+                        name = "Pawn Scale (WoW Forever)",
+                        desc = "Choose which visible Pawn scale JustQuest uses for gear recommendations and quest reward comparisons. "
+                            .. "Pawn's Forever scales may represent individual talent trees; select the one that matches your build. "
+                            .. "Armor-only pieces compared with armor-only gear (or an empty slot) use built-in armor scoring. "
+                            .. "Choose JustQuest class/role weights to use JustQuest's built-in scoring instead.",
+                        order = 1.75,
+                        hidden = not JustQuest.Constants.IS_FOREVER,
+                        values = function()
+                            local ps = JustQuest.Core.GetModule("PawnScoring")
+                            return ps and ps.GetForeverScaleOptions() or {
+                                __justquest__ = "JustQuest class/role weights",
+                            }
+                        end,
+                        get = function()
+                            local ps = JustQuest.Core.GetModule("PawnScoring")
+                            return (ps and ps.GetConfiguredForeverScale()) or "__justquest__"
+                        end,
+                        set = function(_, value)
+                            local ps = JustQuest.Core.GetModule("PawnScoring")
+                            if ps then ps.SetForeverScale(value) end
                         end,
                     },
                     autoEquip = {
@@ -459,7 +484,8 @@ local function CreateGearOptions()
                     minUpgradePct = {
                         type = "range",
                         name = "Minimum Upgrade",
-                        desc = "Ignore upgrades smaller than this, to avoid noise from tiny gains.",
+                        desc = "Ignore upgrades smaller than this, to avoid noise from tiny gains. "
+                            .. "On Forever this is an estimated score percentage, not a performance gain. Smaller positive gains are still protected from selling.",
                         min = 1, max = 25, step = 1,
                         order = 4,
                         disabled = advisorDisabled,
@@ -528,10 +554,13 @@ local function CreateGearOptions()
                             local count = 0
                             for _ in pairs(recs) do count = count + 1 end
                             if count == 0 then
+                                if JustQuest.Constants.IS_FOREVER then
+                                    return MUTED .. "No confirmed stat-score upgrades. Unmodeled items are kept for review; /jq gear check explains each verdict.|r"
+                                end
                                 -- Active spec, matching what the advisor actually scores
                                 -- with — not the loot spec, or this reports "no scale" for
                                 -- a spec the advisor never consulted.
-                                if PawnGetItemData ~= nil and ps and ps.HasScaleForSpec
+                                if not JustQuest.Constants.IS_FOREVER and PawnGetItemData ~= nil and ps and ps.HasScaleForSpec
                                    and not ps.HasScaleForSpec(GetSpecialization()) then
                                     return WARN .. "No active Pawn scale for this spec — set one up in Pawn (usually automatic). Run |r" .. EM .. "/jq gear check|r" .. WARN .. " for details.|r"
                                 end
@@ -539,9 +568,11 @@ local function CreateGearOptions()
                             end
                             local s = string.format(EM .. "%d upgrade%s available:|r\n", count, count == 1 and "" or "s")
                             for _, rec in pairs(recs) do
-                                local pctStr = (ps and ps.FormatUpgrade(rec.pct)) or "upgrade"
+                                local scoring = rec.byClassStats and JustQuest.Core.GetModule("GearScoring")
+                                local pctStr = scoring and scoring.FormatUpgrade(rec.pct, rec.baselineScore)
+                                    or (ps and ps.FormatUpgrade(rec.pct)) or "upgrade"
                                 -- No "replaces" for an empty slot (Pawn's no-baseline sentinel %).
-                                local replaces = (rec.existingLink and rec.pct and rec.pct < 99)
+                                local replaces = (rec.existingLink and rec.pct and (rec.byClassStats or rec.pct < 99))
                                     and ("  " .. MUTED .. "replaces " .. rec.existingLink .. "|r") or ""
                                 local boe = rec.bound and "" or ("  " .. WARN .. "(BoE — equip by hand)|r")
                                 s = s .. "• " .. (rec.link or "?") .. "  " .. GOOD .. pctStr .. "|r" .. replaces .. boe .. "\n"
@@ -747,7 +778,7 @@ local function CreateQuestOptions()
                     autoReward = {
                         type = "toggle",
                         name = "Auto-Select Rewards",
-                        desc = "Auto-pick simple rewards; halt for significant choices.",
+                        desc = "Auto-pick ordinary rewards; recipes, books, profession items, collectibles, currencies, and uncertain special choices require manual selection. Single-choice rewards are still claimed automatically.",
                         order = 1,
                         get = CreateAccessor("quest", "autoReward").get,
                         set = CreateAccessor("quest", "autoReward").set,
@@ -755,7 +786,7 @@ local function CreateQuestOptions()
                     simpleRewardMode = {
                         type = "toggle",
                         name = "Simple Reward Mode",
-                        desc = "Always choose highest vendor value (no collectible/upgrade logic).",
+                        desc = "Choose highest vendor value without upgrade ranking. Special-item and uncertain-reward safety checks still apply. On Forever, a small verified list of ordinary consumables may also be compared by vendor value.",
                         order = 2,
                         get = CreateAccessor("quest", "simpleRewardMode").get,
                         set = CreateAccessor("quest", "simpleRewardMode").set,
@@ -801,6 +832,9 @@ local function CreateQuestOptions()
                     pawnStatus = {
                         type = "description",
                         name = function()
+                            if JustQuest.Constants.IS_FOREVER then
+                                return MUTED .. "Gear uses class/role stat scores. Unknown comparisons require manual selection.|r"
+                            end
                             if PawnGetItemData == nil then
                                 return MUTED .. "Pawn is not installed. Upgrade comparison uses item level.|r"
                             end
@@ -1215,7 +1249,7 @@ local function CreateContainerOptions()
                     enabled = {
                         type = "toggle",
                         name = "Auto-Open Containers",
-                        desc = "Auto-open whitelisted containers.",
+                        desc = "Auto-open containers allowed by the selected mode and category.",
                         order = 1,
                         get = CreateAccessor("containers", "enabled").get,
                         set = CreateAccessor("containers", "enabled").set,
@@ -1243,6 +1277,21 @@ local function CreateContainerOptions()
                         sorting = { "list", "safe" },
                         get = CreateAccessor("containers", "mode").get,
                         set = CreateAccessor("containers", "mode").set,
+                    },
+                    openQuestLoot = {
+                        type = "toggle",
+                        name = "Required Quest-Loot Containers",
+                        desc = "Open containers that supply an unfinished objective of an accepted quest, "
+                            .. "including loot inside other containers. Requires Questie and QuestieDB. "
+                            .. "Delivery items and unrelated quest containers are left alone. "
+                            .. "Applies only in Openable containers mode; your blacklist and lock checks still apply.",
+                        order = 4,
+                        disabled = function()
+                            local config = JustQuest.Core.GetModule("Config")
+                            return not config or config.Get("containers", "mode") == "list"
+                        end,
+                        get = CreateAccessor("containers", "openQuestLoot").get,
+                        set = CreateAccessor("containers", "openQuestLoot").set,
                     },
                 }
             },
@@ -1454,7 +1503,7 @@ local function CreateAdvancedOptions()
             debugMode = {
                 type = "toggle",
                 name = "Debug Mode",
-                desc = "Show debug messages in chat.",
+                desc = "Show debug messages in chat, including automation phases taking 2 ms or longer.",
                 width = "full",
                 order = 2,
                 get = CreateAccessor(nil, "debugMode").get,

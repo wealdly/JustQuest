@@ -28,7 +28,7 @@ local function SameNPC(a, b)
 end
 
 -- Anti-loop cooldown: after a menu is left for manual selection, ignore identical
--- re-shows (same NPC + same option count) for this long.
+-- re-shows (same NPC + same option fingerprint) for this long.
 local FAILED_GOSSIP_TTL = 5.0
 
 -- ============================================================
@@ -43,7 +43,7 @@ local state = {
     expectedGUID = nil,
     failedGossipNPC = nil,
     failedGossipTime = 0,
-    failedGossipOptions = 0,
+    failedGossipFingerprint = nil,
     -- When we last auto-selected an option. Doubles as the "is this still the same
     -- conversation" signal for both the re-show and the close paths.
     lastSelectTime = 0,
@@ -80,7 +80,7 @@ local function ResetLoopGuards(safetyEngine)
     state.chainDepth = 0
     state.failedGossipNPC = nil
     state.failedGossipTime = 0
-    state.failedGossipOptions = 0
+    state.failedGossipFingerprint = nil
     state.lastSelectTime = 0
     -- Conversation over — a "left for manual" note must not leak onto the next menu.
     -- Cleared here rather than on every show: a repump of a still-surfaced menu
@@ -94,7 +94,7 @@ local function ResetLoopGuards(safetyEngine)
 end
 
 -- Check if we're in failed gossip cooldown for current NPC
-function GossipEngine.IsInFailedCooldown()
+function GossipEngine.IsInFailedCooldown(snapshot)
     if not state.failedGossipNPC then return false end
 
     local currentNPC = UnitGUID and UnitGUID("npc")
@@ -104,8 +104,12 @@ function GossipEngine.IsInFailedCooldown()
         return false
     end
 
-    local currentOptions = C_GossipInfo and C_GossipInfo.GetOptions and C_GossipInfo.GetOptions() or {}
-    if #currentOptions ~= state.failedGossipOptions then
+    local fingerprint = snapshot and snapshot.optionsFingerprint
+    if not fingerprint then
+        local currentOptions = C_GossipInfo and C_GossipInfo.GetOptions and C_GossipInfo.GetOptions() or {}
+        fingerprint = GetServices().GossipOptionsFingerprint(currentOptions)
+    end
+    if fingerprint ~= state.failedGossipFingerprint then
         return false
     end
 
@@ -138,6 +142,19 @@ local SERVICE_ICONS = {
     [132147] = true,  -- Binder variant (innkeeper)
     [133784] = true,  -- Trainer variant
 }
+
+-- The plain speech-bubble icon (GossipGossipIcon) marks conversation: "Tell me about…",
+-- "What happened here?" — options that lead to flavor text. Anything else (trainer,
+-- profession, vendor, or an icon we haven't catalogued) is an NPC function behind a door.
+-- An option with no icon at all is treated as conversation: the safe reading.
+local CHATTER_ICONS = {
+    [132053] = true,  -- GossipGossipIcon
+}
+local function IsChatterOption(option)
+    if not option then return true end
+    if option.selectOptionWhenOnlyOption then return false end
+    return (not option.icon) or CHATTER_ICONS[option.icon] == true
+end
 
 -- Returns true for service/utility options (vendor, banker, binder, trainer, etc.)
 -- Primary signal: selectOptionWhenOnlyOption == true means Blizzard considers
@@ -200,6 +217,7 @@ local function SelectOption(option, safetyEngine, services)
         return false
     end
 
+    local started = services and services.ProfileStart and services.ProfileStart()
     local success
     if option.gossipOptionID then
         local ok = pcall(C_GossipInfo.SelectOption, option.gossipOptionID)
@@ -210,8 +228,10 @@ local function SelectOption(option, safetyEngine, services)
     else
         return false
     end
+    if services and services.ProfileEnd then services.ProfileEnd("Gossip selection", started) end
 
     if not success then return false end
+    if services and services.NoteStep then services.NoteStep() end
 
     if safetyEngine then
         safetyEngine.MarkSelection(option.gossipOptionID or option.orderIndex)
@@ -245,7 +265,7 @@ local function TrySelectSafeOption(option, safetyEngine, services)
     state.chainDepth = state.chainDepth + 1
     state.failedGossipNPC = nil
     state.failedGossipTime = 0
-    state.failedGossipOptions = 0
+    state.failedGossipFingerprint = nil
     -- Marks a close or re-show landing shortly after this as server-driven, not the
     -- player leaving. Re-readable, unlike the consumable flag this replaced.
     state.lastSelectTime = GetTime()
@@ -258,16 +278,12 @@ end
 -- Core Gossip Handler
 -- ============================================================
 
-local function HandleGossip(skipPreChecks)
+-- Entered only from OnGossipShow, which the content dispatch reaches through QuestEngine
+-- (quests first). The caller owns BUSY and has already run the automate / context gates.
+local function HandleGossip(snapshot)
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
     if not (services and safetyEngine) then return false end
-
-    -- Always check modifier keys, even when skipPreChecks=true
-    if not services.ShouldAutomate() then
-        services.RestoreAutomationFrames()
-        return false
-    end
 
     local function halt(reason)
         state.automationHalted = true
@@ -276,17 +292,10 @@ local function HandleGossip(skipPreChecks)
         return false
     end
 
-    if not skipPreChecks then
-        if not services.CanAutomate() then return false end
-        if not services.IsAutomationContextAllowed() then return false end
-        if safetyEngine.IsBusy() then return false end
-    end
-
     if state.confirmationPending then return false end
 
     local currentNPC = services.SafeCall(UnitGUID, "npc")
     if not currentNPC then return false end
-    if state.expectedGUID and not SameNPC(state.expectedGUID, currentNPC) then return false end
 
     -- Respect automation halt unless there is quest work we'd actually do
     if state.automationHalted then
@@ -296,16 +305,12 @@ local function HandleGossip(skipPreChecks)
         state.automationHalted = false
     end
 
-    -- When skipPreChecks=true, caller (QuestEngine) already owns the BUSY state
-    if not skipPreChecks then
-        if not safetyEngine.BeginProcessing("handling_gossip") then return false end
-    end
-
     local config = GetConfig()
     local aggressive = not config or config.Get("gossip", "aggressive") ~= false
 
     -- Get all options (includes unavailable/locked — needed for fingerprinting)
-    local allOptions = services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions) or {}
+    local allOptions = snapshot and snapshot.options
+        or services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions) or {}
 
     if #allOptions == 0 then
         -- Optionless page: a dead end. The common flavor path never reaches here —
@@ -325,10 +330,10 @@ local function HandleGossip(skipPreChecks)
         end
     end
 
-    -- Anti-loop: fingerprint against the TOTAL option count so any server-side
-    -- state change (a locked option unlocking, etc.) resets the cooldown
+    local fingerprint = snapshot and snapshot.optionsFingerprint
+        or services.GossipOptionsFingerprint(allOptions)
     if SameNPC(state.failedGossipNPC, currentNPC) and
-       state.failedGossipOptions == #allOptions and
+       state.failedGossipFingerprint == fingerprint and
        (GetTime() - state.failedGossipTime) < FAILED_GOSSIP_TTL then
         safetyEngine.EndProcessing("failed_gossip_cooldown")
         return false
@@ -359,29 +364,31 @@ local function HandleGossip(skipPreChecks)
         end
     end
 
+    -- A forced menu (ForceGossip / ForceInteractionOnSingleChoice) is the server saying
+    -- "show the player". With several options that is a real decision: no quest pick, no
+    -- traverse. A forced menu of one is still just a doorway (single-option step below).
+    local forceGossip = C_GossipInfo.ForceGossip and C_GossipInfo.ForceGossip() or false
+
     -- PRIORITY 2 — QUEST OPTIONS: gossip entries flagged as quest-linked (server
     -- QuestLabelPrepend flag, with a localized "(Quest)" text fallback). Safe to take
-    -- at any option count; the quest itself is gated by QUEST_DETAIL safety.
-    for _, option in ipairs(available) do
-        if IsQuestOption(option)
-           and TrySelectSafeOption(option, safetyEngine, services) then
-            -- No repump here: SelectOption already queued the (seeded) post-selection check.
-            safetyEngine.EndProcessing("quest_option_selected")
-            return true
+    -- at any option count; the quest itself is gated by QUEST_DETAIL safety. ForceGossip
+    -- is the exception: it explicitly asks the player to make the menu choice.
+    if not forceGossip then
+        for _, option in ipairs(available) do
+            if IsQuestOption(option)
+               and TrySelectSafeOption(option, safetyEngine, services) then
+                -- No repump here: SelectOption already queued the (seeded) post-selection check.
+                safetyEngine.EndProcessing("quest_option_selected")
+                return true
+            end
         end
     end
-
-    -- The server forcing the menu (ForceGossip / ForceInteractionOnSingleChoice)
-    -- is an explicit "show the player" — a true decision — so never auto-advance
-    -- past it, in either mode.
-    local forceGossip = C_GossipInfo.ForceGossip and C_GossipInfo.ForceGossip() or false
 
     -- A menu holding a blacklisted option (teleport/portal/campaign-skip ship by
     -- default) is a real decision, not navigation filler. Traversing past it by taking
     -- some OTHER option answers it for the player by omission, and in fast mode the menu
-    -- is hidden, so they never see the option was offered at all. Treat it like
-    -- ForceGossip: stop and surface the menu. The whitelist and quest-flagged passes
-    -- above already ran — those are explicit intent and quest content, not guesswork.
+    -- is hidden, so they never see the option was offered at all. Like ForceGossip, it
+    -- stops the traverse and surfaces the menu.
     local hasUnsafeOption = false
     for _, option in ipairs(available) do
         if safetyEngine.IsBlacklisted(option) then
@@ -390,69 +397,39 @@ local function HandleGossip(skipPreChecks)
         end
     end
 
-    -- A conversation already walked to a dead end at this NPC: don't explore it again.
-    -- This retires the CHATTER PROBE only — see the pass count below. It deliberately no
-    -- longer diverts to the stand-down branch, which claimed "a pure vendor/trainer still
-    -- fires" but could not: that branch requires the whole menu to be a single option, and a
-    -- vendor sitting beside two lines of flavor never is. The failure was self-reinforcing —
-    -- probing the flavor dead-ends the conversation, which marks the NPC concluded, which
-    -- then blocked the vendor on every later click at that same target.
-    local concluded = (state.concludedNPC and SameNPC(state.concludedNPC, currentNPC)) or false
-
-    -- Back at a menu we already picked from (an already-taken option is showing
-    -- again): this is a hub, and the branch we took didn't lead anywhere — a real
-    -- quest would have moved to QUEST_DETAIL and reset the chain. Sibling chatter
-    -- branches are alternatives, not a checklist; walking them one per re-show is
-    -- the "clicks through every option" clunk. Services (pass 1) stay allowed.
-    local revisited = false
-    for _, option in ipairs(available) do
-        if safetyEngine.WasSelected
-           and safetyEngine.WasSelected(option.gossipOptionID or option.orderIndex) then
-            revisited = true
-            break
-        end
-    end
-
-    -- Inside an instance, with other people in the group, the single non-service option on an
-    -- NPC's menu is routinely "we are ready" / "begin the assault" / "send in the next wave" —
-    -- it starts an encounter. Nothing marks those: they carry no quest flag, no service flag,
-    -- no reward list, and no blacklist keyword would cover the phrasings across twenty years of
-    -- content. So the exploratory pass stands down there, and only there. Services and
-    -- quest-flagged options are unaffected — both passes above already ran.
-    --
-    -- GROUPED, not merely instanced, and that distinction is the whole point: soloing legacy
-    -- raids and old scenarios is where the traverse earns its keep, and a mistaken pull there
-    -- costs only the person who walked in. With a group, it costs four people who clicked nothing.
+    -- Inside an instance, with other people in the group, a lone non-service option is
+    -- routinely "we are ready" / "begin the assault" — it starts an encounter, and nothing
+    -- marks those (no quest/service flag, no rewards, no keyword that covers twenty years of
+    -- phrasing). Non-service exploration stands down there. GROUPED, not merely instanced:
+    -- soloing legacy content is where it earns its keep, and a mistaken pull there costs
+    -- only the person who walked in.
     local groupedInstance = (IsInInstance() and IsInGroup()) and true or false
 
     if aggressive and not forceGossip and not hasUnsafeOption then
-        -- PRIORITY 3 (aggressive, default) — TRAVERSE, services FIRST. A vendor /
-        -- trainer / flight master is what the player walked up for; probing
-        -- conversation filler ahead of it reads as the addon fighting the player —
-        -- and since the chatter probe usually dead-ends (flavor close kills the
-        -- conversation), services-last meant the service never fired at all at
-        -- chatty NPCs. Conversation branches come second, at most ONE per
-        -- conversation (revisited skips that pass), purely to reach gossip-buried
-        -- quests when no service claimed the interaction. Known cost, accepted: a
-        -- quest buried behind chatter at an NPC that ALSO offers a service is no
-        -- longer auto-found — the whitelist covers those, and quest-flagged options
-        -- were already taken above.
-        -- Safety is layered and already enforced here:
-        --   • a blacklisted keyword (teleport/portal/time/campaign-skip ship by
-        --     default) anywhere in the menu stops the traverse before it starts — see
-        --     hasUnsafeOption above — and TrySelectSafeOption blocks the option itself,
-        --   • costed/coded/otherwise-irreversible options never execute from this
-        --     call — the server intercepts them with GOSSIP_CONFIRM / GOSSIP_ENTER_CODE,
-        --     which we never auto-accept (they surface for the player), and
-        --   • once-per-conversation repeat + chain-depth guards bound the walk, so a
-        --     looping or dead-end menu surfaces instead of spinning.
-        -- Pass 1 is services and always runs. Pass 2 is the single chatter probe, and is
-        -- skipped once this menu has been picked from (revisited), the conversation has
-        -- already dead-ended (concluded), or we are grouped inside an instance where a
-        -- chatter option is as likely to pull a boss as to reach a quest (groupedInstance) —
-        -- in every case the service is still the thing the player walked up for.
+        -- PRIORITY 3 (aggressive) — TRAVERSE, services FIRST. A vendor / trainer / flight
+        -- master is what the player walked up for; probing chatter ahead of it fought the
+        -- player, and since the probe usually dead-ends, the service never fired at chatty
+        -- NPCs. Pass 2 is ONE conversation branch, purely to reach gossip-buried quests.
+        -- Known cost: a quest buried behind chatter at an NPC that also offers a service is
+        -- not auto-found (the whitelist covers those).
+        -- Pass 2 is skipped when:
+        --   • concluded — the conversation already walked to a dead end at this NPC;
+        --   • revisited — an option we already took is showing again: this is a hub and the
+        --     branch led nowhere, and sibling chatter is alternatives, not a checklist;
+        --   • groupedInstance — see above.
+        -- Costed/coded options never execute from here: the server intercepts them with
+        -- GOSSIP_CONFIRM / GOSSIP_ENTER_CODE, which we never auto-accept. Repeat and
+        -- chain-depth guards bound the walk.
+        local concluded = (state.concludedNPC and SameNPC(state.concludedNPC, currentNPC)) or false
+        local revisited = false
+        for _, option in ipairs(available) do
+            if safetyEngine.WasSelected(option.gossipOptionID or option.orderIndex) then
+                revisited = true
+                break
+            end
+        end
         for pass = 1, ((revisited or concluded or groupedInstance) and 1 or 2) do
-            local wantService = (pass == 1)  -- pass 1: services; pass 2: one conversation branch
+            local wantService = (pass == 1)
             for _, option in ipairs(available) do
                 if IsServiceOption(option) == wantService
                    and not IsActionOption(option)
@@ -462,23 +439,38 @@ local function HandleGossip(skipPreChecks)
                 end
             end
         end
-    else
-        -- PRIORITY 3 (conservative — and the stand-down path for forced/unsafe menus in
-        -- aggressive mode; `concluded` no longer lands here) — SINGLE SERVICE STEP
-        -- (Blizzard-exact):
-        -- exactly one option Blizzard marks auto-selectable (selectOptionWhenOnlyOption,
-        -- with an icon fallback), no quest work pending, not forced. Mirrors HandleShow(),
-        -- except that quests we'd never act on (incomplete, blocked, trivial, type off) don't
-        -- count: carrying an unfinished quest for a flight master shouldn't block the map.
-        -- Safe as a catch-all: its own guards (single option, service, not forced) plus
-        -- TrySelectSafeOption's blacklist check cover every way this branch is reached.
-        local npcHasQuests = services.HasActionableQuestContent()
-        if #available == 1 and IsServiceOption(available[1])
-           and not npcHasQuests and not forceGossip then
-            if TrySelectSafeOption(available[1], safetyEngine, services) then
-                safetyEngine.EndProcessing("service_step_selected")
-                return true
-            end
+    end
+
+    -- PRIORITY 4 (both modes, and the stand-down path for forced menus) — SINGLE-OPTION
+    -- STEP. One thing to click is not a decision, it is a doorway: a service, or a trainer's
+    -- "see skills" page. Blizzard's GossipFrame already clicks flagged single services on
+    -- unforced menus, so what reaches here is exactly what it declined — unflagged
+    -- doorways and forced single-choice menus — and refusing those made conservative mode
+    -- a no-op. Two shapes qualify:
+    --   • a service (selectOptionWhenOnlyOption or a service icon), even beside locked
+    --     siblings and inside a grouped instance — the player walked up for it;
+    --   • any other non-conversation option, when it is the ONLY option and we aren't
+    --     grouped in an instance.
+    -- Never conversation (speech-bubble / no icon): that opens flavor text the player came
+    -- to read. Never reward/spell/movie options, never quest-flagged options (the quest pass
+    -- deliberately leaves them on forced menus), never while the NPC has quest work pending
+    -- (counting only quests we'd act on, so an unfinished quest doesn't block a flight
+    -- master). TrySelectSafeOption still applies blacklist and repeat protection.
+    if #available == 1 then
+        local only = available[1]
+        local npcHasQuests
+        if snapshot and snapshot.hasActionableQuests ~= nil then
+            npcHasQuests = snapshot.hasActionableQuests
+        else
+            npcHasQuests = services.HasActionableQuestContent()
+        end
+        local doorway = IsServiceOption(only)
+            or (#allOptions == 1 and not IsChatterOption(only) and not groupedInstance)
+        if doorway and not npcHasQuests
+           and not IsActionOption(only) and not IsQuestOption(only)
+           and TrySelectSafeOption(only, safetyEngine, services) then
+            safetyEngine.EndProcessing("single_option_selected")
+            return true
         end
     end
 
@@ -522,7 +514,7 @@ local function HandleGossip(skipPreChecks)
 
     state.failedGossipNPC     = currentNPC
     state.failedGossipTime    = GetTime()
-    state.failedGossipOptions = #allOptions
+    state.failedGossipFingerprint = fingerprint
     -- The fingerprint above expires (TTL) and is wiped by the aging reset on re-show;
     -- this survives both, so a re-click gets the menu instantly instead of a re-walk.
     state.concludedNPC        = currentNPC
@@ -546,7 +538,9 @@ end
 -- Event Handlers
 -- ============================================================
 
-function GossipEngine.OnGossipShow(skipPreChecks)
+-- Called by QuestEngine once it has found no quest work (it already owns BUSY), or by the
+-- dispatch fallback. snapshot: this pass's options + fingerprint, never retained.
+function GossipEngine.OnGossipShow(snapshot)
     local services = GetServices()
     if not services then return false end
     if not services.ShouldAutomate() then
@@ -554,12 +548,6 @@ function GossipEngine.OnGossipShow(skipPreChecks)
         return false
     end
     if not services.IsAutomationContextAllowed() then return false end
-
-    if not skipPreChecks then
-        if state.lastShowTime and (GetTime() - state.lastShowTime) < 0.1 then
-            return false
-        end
-    end
 
     state.lastShowTime = GetTime()
 
@@ -584,29 +572,9 @@ function GossipEngine.OnGossipShow(skipPreChecks)
         ResetLoopGuards()
     end
 
-    local currentGUID = services.SafeCall(UnitGUID, "npc")
-    if not state.expectedGUID or not SameNPC(state.expectedGUID, currentGUID) then
-        state.expectedGUID = currentGUID
-    end
+    state.expectedGUID = services.SafeCall(UnitGUID, "npc")
 
-    local safety = GetSafetyEngine()
-    local currentState = safety and safety.GetState() or "IDLE"
-    if currentState ~= "IDLE" and not skipPreChecks then
-        return false
-    end
-
-    return HandleGossip(skipPreChecks)
-end
-
-function GossipEngine.OnGossipOptionsRefreshed()
-    local services = GetServices()
-    if not services then return end
-    if not services.ShouldAutomate() then
-        services.RestoreAutomationFrames()
-        return
-    end
-    if not services.IsAutomationContextAllowed() then return end
-    HandleGossip()
+    return HandleGossip(snapshot)
 end
 
 function GossipEngine.OnGossipConfirm()
@@ -766,7 +734,8 @@ function GossipEngine.ExplainOption(option)
         bits[#bits + 1] = "|cff33ccffservice|r"
             .. (option.selectOptionWhenOnlyOption and "" or " (by icon)")
     else
-        bits[#bits + 1] = "|cff888888chatter|r"
+        bits[#bits + 1] = IsChatterOption(option) and "|cff888888chatter (flavor)|r"
+            or "|cff888888chatter (doorway icon " .. tostring(option.icon) .. ")|r"
     end
     if IsActionOption(option) then bits[#bits + 1] = "|cffff9999action-skip|r" end
     if safetyEngine then

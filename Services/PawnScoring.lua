@@ -4,8 +4,8 @@
 -- and by how much?", so reward auto-selection and the Gear Advisor never disagree.
 -- Uses Pawn's public API directly (no translation layer): PawnGetItemData +
 -- PawnIsItemAnUpgrade, filtered to the scales that apply to the player's class/spec.
--- Pawn absent / item not cached / no applicable scale -> returns nil (caller falls
--- back to item level).
+-- Pawn absent / item not cached / no applicable scale -> returns nil for the caller
+-- to choose its appropriate fallback.
 
 local ADDON_NAME, JustQuest = ...
 
@@ -18,6 +18,76 @@ local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.Get
 local PawnScoring = {}
 
 local GetConfig = JustQuest.Core.ModuleGetter("Config")
+
+local JUSTQUEST_SCALE = "__justquest__"
+
+local function CharacterKey()
+    local name, realm = UnitFullName("player")
+    realm = (realm and realm ~= "") and realm or (GetNormalizedRealmName and GetNormalizedRealmName()) or "?"
+    return (name or "?") .. "-" .. realm
+end
+
+function PawnScoring.GetConfiguredForeverScale()
+    local config = GetConfig()
+    local scales = config and config.Get("gearSwap", "foreverPawnScales")
+    local name = scales and scales[CharacterKey()]
+    return name and name ~= JUSTQUEST_SCALE and name or nil
+end
+
+function PawnScoring.SetForeverScale(name)
+    if type(name) ~= "string" then return false end
+    local config = GetConfig()
+    if not config then return false end
+    local scales = {}
+    for key, value in pairs(config.Get("gearSwap", "foreverPawnScales") or {}) do
+        scales[key] = value
+    end
+    if name == JUSTQUEST_SCALE then
+        scales[CharacterKey()] = nil
+    else
+        scales[CharacterKey()] = name
+    end
+    config.Set("gearSwap", "foreverPawnScales", scales)
+    return true
+end
+
+-- Only expose visible scales Pawn can actually score. Unlike normal auto-selection,
+-- the user explicitly picks the desired Forever talent-tree scale.
+function PawnScoring.GetForeverScaleOptions()
+    local values = { [JUSTQUEST_SCALE] = "JustQuest class/role weights" }
+    if not (PawnCommon and PawnCommon.Scales and PawnIsScaleVisible) then return values end
+    local _, _, playerClassID = UnitClass("player")
+    local scales = PawnGetAllScalesEx and PawnGetAllScalesEx()
+    if scales then
+        for _, info in ipairs(scales) do
+            local scale = PawnCommon.Scales[info.Name]
+            if info.IsVisible and scale and (scale.ClassID == nil or scale.ClassID == playerClassID) then
+                values[info.Name] = (info.LocalizedName or info.Name) .. " (" .. info.Name .. ")"
+            end
+        end
+    else
+        for name, scale in pairs(PawnCommon.Scales) do
+            if PawnIsScaleVisible(name) and (scale.ClassID == nil or scale.ClassID == playerClassID) then
+                values[name] = (scale.LocalizedName or name) .. " (" .. name .. ")"
+            end
+        end
+    end
+    local selected = PawnScoring.GetConfiguredForeverScale()
+    if selected and not values[selected] then
+        values[selected] = "Unavailable Pawn scale (" .. selected .. ")"
+    end
+    return values
+end
+
+function PawnScoring.RelevantScale(scaleName)
+    if not (scaleName and PawnCommon and PawnCommon.Scales and PawnIsScaleVisible) then return nil end
+    local scale = PawnCommon.Scales[scaleName]
+    if not scale or (scale.ClassID ~= nil and select(3, UnitClass("player")) ~= scale.ClassID)
+       or not PawnIsScaleVisible(scaleName) then
+        return nil
+    end
+    return { [scaleName] = true }
+end
 
 -- Returns the spec index (1–4) that should drive Pawn scale selection.
 -- Honours the loot specialization override (right-click portrait → Loot Specialization):
@@ -51,7 +121,7 @@ end
 -- Pawn can give a definitive result for the player's effective spec, or nil to signal
 -- "no Pawn verdict — fall back to item level".
 --
--- Scale selection priority:
+-- Automatic scale selection priority:
 --   1. Scales tagged to the player's current class+spec (Scale.ClassID + Scale.SpecID)
 --   2. Scales tagged to the player's class only (Scale.ClassID, no SpecID)
 --   3. Untagged/generic user scales (no ClassID)
@@ -90,21 +160,27 @@ end
 -- specIndex: score for a specific spec (advisor passes the ACTIVE spec; reward omits it,
 -- defaulting to the loot-spec-aware index). relevant: precomputed RelevantScales for a
 -- bulk scan (optional — computed here when nil).
-function PawnScoring.ScoreItem(itemLink, specIndex, relevant)
+function PawnScoring.ScoreItem(itemLink, specIndex, relevant, configuredForeverScale)
     if not (PawnGetItemData and PawnIsItemAnUpgrade and PawnIsScaleVisible
             and PawnCommon and PawnCommon.Scales) then
-        return nil
-    end
-
-    -- Respect the user's option to disable Pawn scoring.
-    local config = GetConfig()
-    if config and config.Get("quest", "usePawnScoring") == false then
         return nil
     end
 
     -- No applicable scale -> skip the expensive Pawn calls entirely.
     relevant = relevant or PawnScoring.RelevantScales(specIndex)
     if not relevant then return nil end
+
+    -- Respect the user's option on clients where it is exposed. Forever's option is
+    -- hidden because selecting a Pawn scale in the Gear panel is explicit consent.
+    local config = GetConfig()
+    local selectedForeverScale
+    if JustQuest.Constants.IS_FOREVER then
+        selectedForeverScale = configuredForeverScale or PawnScoring.GetConfiguredForeverScale()
+    end
+    if config and config.Get("quest", "usePawnScoring") == false
+       and not (selectedForeverScale and relevant[selectedForeverScale]) then
+        return nil
+    end
 
     local pawnData = PawnGetItemData(itemLink)
     if not pawnData then return nil end  -- item not in WoW/Pawn cache yet

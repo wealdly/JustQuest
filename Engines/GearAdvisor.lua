@@ -36,39 +36,13 @@ local GetToast       = JustQuest.Core.ModuleGetter("GearToast")
 local GetGameData    = JustQuest.Core.ModuleGetter("GameData")
 local GetSafety      = JustQuest.Core.ModuleGetter("SafetyEngine")
 local GetClassWeights = JustQuest.Core.ModuleGetter("ClassWeights")
+local GetGearScoring = JustQuest.Core.ModuleGetter("GearScoring")
 
--- Equip location -> inventory slot(s). Trinkets (13/14), shirt (4), tabard (19) are
--- excluded (Pawn won't score trinkets; the others are cosmetic). Rings and 1H weapons
--- are dual-slot; the destination is resolved from Pawn's ExistingItemLink.
-local INVTYPE_SLOTS = {
-    INVTYPE_HEAD = {1}, INVTYPE_NECK = {2}, INVTYPE_SHOULDER = {3},
-    INVTYPE_CHEST = {5}, INVTYPE_ROBE = {5}, INVTYPE_WAIST = {6},
-    INVTYPE_LEGS = {7}, INVTYPE_FEET = {8}, INVTYPE_WRIST = {9},
-    INVTYPE_HAND = {10}, INVTYPE_FINGER = {11, 12}, INVTYPE_CLOAK = {15},
-    INVTYPE_WEAPON = {16, 17}, INVTYPE_2HWEAPON = {16},
-    INVTYPE_WEAPONMAINHAND = {16}, INVTYPE_WEAPONOFFHAND = {17},
-    INVTYPE_HOLDABLE = {17}, INVTYPE_SHIELD = {17},
-    -- Main hand on retail, the ranged slot on Forever (see Constants.RANGED_SLOT).
-    INVTYPE_RANGED = {JustQuest.Constants.RANGED_SLOT},
-    INVTYPE_RANGEDRIGHT = {JustQuest.Constants.RANGED_SLOT},
-}
-if JustQuest.Constants.IS_FOREVER then
-    INVTYPE_SLOTS.INVTYPE_THROWN = {JustQuest.Constants.RANGED_SLOT}
-    INVTYPE_SLOTS.INVTYPE_RELIC  = {JustQuest.Constants.RANGED_SLOT}
-end
-
--- The slots an item can actually replace. Differs from INVTYPE_SLOTS only for a one-hander,
--- which competes for the off-hand only when the character can dual wield and the off-hand
--- holds a weapon (GameData.OneHanderFitsOffHand) — not a shield or a held item.
-local MAIN_HAND_ONLY = {16}
+-- Slot and weapon rules are shared; trinkets and cosmetics are not advisor candidates.
+local EXCLUDED_SLOTS = { INVTYPE_TRINKET = true, INVTYPE_BODY = true, INVTYPE_TABARD = true }
 local function ComparableSlots(invType)
-    if invType == "INVTYPE_WEAPON" then
-        local gameData = JustQuest.Core.GetModule("GameData")
-        if gameData and gameData.OneHanderFitsOffHand and not gameData.OneHanderFitsOffHand() then
-            return MAIN_HAND_ONLY
-        end
-    end
-    return INVTYPE_SLOTS[invType]
+    if not invType or EXCLUDED_SLOTS[invType] then return nil end
+    return GetGameData().ComparableSlots(invType)
 end
 
 local FIRST_SLOT = INVSLOT_FIRST_EQUIPPED or 1
@@ -189,21 +163,7 @@ end
 -- alone — so a 2H can read as an upgrade while being a net loss once the off-hand goes.
 -- Returns the item that would come off, or nil if nothing would.
 local function DisplacedOffHand(invType, dest)
-    if dest ~= 16 or invType ~= "INVTYPE_2HWEAPON" then return nil end
-
-    local offLink = GetInventoryItemLink("player", 17)
-    if not offLink then return nil end
-
-    -- Titan's Grip and anything like it: if a two-hander is ALREADY equipped in the main
-    -- hand alongside an off-hand, then a two-hander demonstrably does not displace one.
-    -- Reading the player's actual state beats maintaining a list of talents that allow it.
-    local mainLink = GetInventoryItemLink("player", 16)
-    if mainLink then
-        local okMain, _, _, _, mainEquipLoc = pcall(C_Item.GetItemInfoInstant, mainLink)
-        if okMain and mainEquipLoc == "INVTYPE_2HWEAPON" then return nil end
-    end
-
-    return offLink
+    return GetGameData().DisplacedOffHand(invType, dest)
 end
 
 local function SlotIsSetProtected(slot)
@@ -279,7 +239,7 @@ end
 -- an empty slot (Pawn's no-baseline sentinel %) displaces nothing. Pawn sometimes hands
 -- back a bare "item:..." string, so resolve that to a real link before showing it.
 local function ReplacedLink(rec)
-    if rec.pct and rec.pct >= 99 then return nil end  -- empty slot / no baseline
+    if not rec.byClassStats and rec.pct and rec.pct >= 99 then return nil end
     local link = rec.existingLink
     if not link then return nil end
     if not link:find("|H", 1, true) then
@@ -292,6 +252,11 @@ end
 local function ResolveSlot(rec)
     local slots = ComparableSlots(rec.invType)
     if not slots then return nil end
+    if rec.destinationSlot then
+        for _, slot in ipairs(slots) do
+            if slot == rec.destinationSlot then return slot end
+        end
+    end
     -- Target the slot holding the exact item Pawn says it replaces (handles ring
     -- 11-vs-12, weapon 16-vs-17). Pawn's ExistingItemLink is unenchanted, so match by
     -- itemID; when both slots share an itemID (two copies at different upgrade levels)
@@ -327,8 +292,8 @@ end
 --
 -- Reached ONLY when Pawn cannot answer, and deliberately blunt: no stat weighting, no role
 -- awareness. What keeps it honest is the gate it sits behind — usability, armour type and
--- primary stat are all filtered out before anything is scored, so the worst it can do is prefer
--- a higher-item-level piece the player's spec can legitimately wear.
+-- primary stat are filtered out on retail before anything is scored, so the worst it can do is
+-- prefer a higher-item-level piece the player's spec can legitimately wear.
 --
 -- Results are shaped exactly like Pawn's, so the minimum-upgrade threshold, slot resolution,
 -- the toast and auto-equip all work without knowing which scorer produced them.
@@ -372,16 +337,22 @@ local function ScoreByItemLevel(link, invType)
     }
 end
 
--- Forever's scorer (Services/ClassWeights.lua): stats weighted for class + role, against the
--- weaker of the slots the item can replace. A two-hander is weighed against the main hand AND
--- the off-hand it would take with it — that pair is what actually comes off. Same shape as the
--- Pawn and item-level results, so everything downstream is unchanged.
-local function ScoreByClassWeights(cw, link, invType)
-    local slots = ComparableSlots(invType)
-    if not slots then return nil end
-    -- The whole verdict, "not an upgrade" included: nil has to keep meaning "no verdict yet"
-    -- (item or tooltip data still loading), because that's what the scan retries on.
-    return cw.CompareToEquipped(link, slots, DisplacedOffHand(invType, slots[1]))
+-- The shared Forever scorer uses the selected Pawn scale when available, otherwise the
+-- class/role model. Either way, item eligibility and the resulting verdict stay shared with
+-- the selling and reward paths.
+local function ScoreByForeverGearScoring(link, scoring, context)
+    scoring = scoring or GetGearScoring()
+    if not scoring then return nil, "scoring unavailable", true end
+    local result = scoring.EvaluateItem(link, context)
+    if result.status == "unknown" then return nil, result.reason, result.retryable end
+    return result
+end
+
+local function FormatUpgrade(rec)
+    local scoring = rec.byClassStats and GetGearScoring()
+    if scoring then return scoring.FormatUpgrade(rec.pct, rec.baselineScore) or "estimated score gain" end
+    local ps = GetPawnScoring()
+    return (ps and ps.FormatUpgrade(rec.pct)) or "upgrade"
 end
 
 local function Enabled()
@@ -405,6 +376,7 @@ local STAT_LABEL_FALLBACK = {
 
 local function StatsFor(link)
     if not link then return nil end
+    if JustQuest.Constants.IS_FOREVER then return GetGameData().ItemStats(link) end
     local getter = (C_Item and C_Item.GetItemStats) or GetItemStats
     if not getter then return nil end
     local ok, stats = pcall(getter, link)
@@ -416,23 +388,25 @@ end
 -- the line entirely rather than showing an empty row.
 local MAX_STATS = 4
 
-local function StatDeltaText(candidateLink, equippedLink)
+local function StatDeltaText(candidateLink, equippedLink, displacedLink)
     local newStats = StatsFor(candidateLink)
     if not newStats then return nil end
     local oldStats = StatsFor(equippedLink) or {}
+    local displacedStats = StatsFor(displacedLink) or {}
 
     local deltas = {}
     local seen = {}
     local function consider(key)
         if seen[key] then return end
         seen[key] = true
-        local diff = (newStats[key] or 0) - (oldStats[key] or 0)
+        local diff = (newStats[key] or 0) - (oldStats[key] or 0) - (displacedStats[key] or 0)
         if diff ~= 0 then
             deltas[#deltas + 1] = { key = key, diff = diff }
         end
     end
     for key in pairs(newStats) do consider(key) end
     for key in pairs(oldStats) do consider(key) end
+    for key in pairs(displacedStats) do consider(key) end
     if #deltas == 0 then return nil end
 
     table.sort(deltas, function(a, b) return math.abs(a.diff) > math.abs(b.diff) end)
@@ -502,7 +476,12 @@ end
 -- just for having been shown: Skip silences an item for this session, Never for good;
 -- otherwise it keeps being offered.
 -- Chains: deciding shows the next suggestion, so a batch is handled one at a time.
-local function ShowNextPrompt()
+local function ShowNextPrompt(quiet)
+    if InCombatLockdown() then
+        local toast = GetToast()
+        if toast and toast.Hide then toast.Hide() end
+        return
+    end
     local config = GetConfig()
     local autoEquip = config and config.Get("gearSwap", "autoEquip")
 
@@ -535,8 +514,7 @@ local function ShowNextPrompt()
 
     promptedID = best.id
     Debug("prompting: " .. tostring(best.link))
-    local ps = GetPawnScoring()
-    local detail   = (ps and ps.FormatUpgrade(best.pct)) or "upgrade"
+    local detail   = FormatUpgrade(best)
     local replaced = ReplacedLink(best)
     if replaced then detail = detail .. "  ·  replaces " .. replaced end
 
@@ -550,7 +528,8 @@ local function ShowNextPrompt()
     -- Compare against what is actually in the destination slot, not Pawn's baseline link:
     -- the baseline is unenchanted, and for an empty slot there is no baseline at all.
     local equippedLink = destSlot and GetInventoryItemLink("player", destSlot)
-    local statLine = StatDeltaText(best.link, equippedLink or replaced)
+    local statLine = StatDeltaText(best.link, equippedLink or replaced,
+        (best.byClassStats or best.byPawnScale) and displaces or nil)
 
     local actions = {
         { text = "Equip", func = function()
@@ -573,6 +552,7 @@ local function ShowNextPrompt()
     local heading = best.byItemLevel and "Gear upgrade (by item level)" or "Gear upgrade"
     local cw = best.byClassStats and GetClassWeights()
     if cw then heading = "Gear upgrade (" .. cw.RoleLabel(cw.GetRole()):lower() .. " stats)" end
+    if best.byPawnScale then heading = "Gear upgrade (Pawn scale)" end
     if pending > 1 then
         heading = heading .. "  (" .. pending .. " waiting)"
         actions[#actions + 1] = { text = "Equip All", func = function()
@@ -592,7 +572,7 @@ local function ShowNextPrompt()
 
     Announce{
         head = heading, text = best.link, sub = detail,
-        link = best.link, stats = statLine, actions = actions,
+        link = best.link, stats = statLine, actions = actions, quiet = quiet,
     }
 end
 
@@ -703,7 +683,7 @@ function GearAdvisor.Scan()
                 seen = seen + 1
                 local id = ItemID(link)
                 local invType = select(4, C_Item.GetItemInfoInstant(link))
-                if id and invType and INVTYPE_SLOTS[invType] then
+                if id and ComparableSlots(invType) then
                     -- Fingerprint the full scorable set — links, not IDs, so an item level
                     -- change registers — before the ignore filters, so toggling those can't
                     -- alias two different bag states to the same print.
@@ -759,14 +739,31 @@ function GearAdvisor.Scan()
     -- in DPS gear, and with no Feral scale defined it scores nothing at all and the
     -- advisor silently goes dead. The reward picker follows loot spec because a quest
     -- reward is a thing you keep for later; this is a thing you put on now.
-    local spec = GetSpecialization()
-    local relevant = ps.RelevantScales(spec)
-    -- Without Pawn: on Forever the class + role weights (item levels mean nothing there); on
+    local spec = GetSpecialization and GetSpecialization()
+    local gearScoring = JustQuest.Constants.IS_FOREVER and GetGearScoring()
+    local gearScoringContext = gearScoring and gearScoring.CreateScanContext
+        and gearScoring.CreateScanContext()
+    local selectedPawnScale = gearScoringContext and gearScoringContext.selectedScale
+    local selectedRelevant = gearScoringContext and gearScoringContext.relevant
+    if JustQuest.Constants.IS_FOREVER and not gearScoringContext then
+        selectedPawnScale = ps.GetConfiguredForeverScale()
+        selectedRelevant = selectedPawnScale and ps.RelevantScale(selectedPawnScale)
+    end
+    local relevant = not JustQuest.Constants.IS_FOREVER and ps.RelevantScales(spec) or nil
+    -- On Forever, the shared scorer uses the selected Pawn scale or class + role weights;
+    -- item levels mean nothing there. On retail, no applicable Pawn scale falls back to
     -- retail item level, which does.
     local cw = GetClassWeights()
-    local classStats = not relevant and cw and cw.IsActive()
-    if classStats then
-        Debug("scan: no Pawn scale — scoring by class weights (" .. cw.RoleLabel(cw.GetRole()) .. ")")
+    local foreverScoring = JustQuest.Constants.IS_FOREVER and cw and cw.IsActive()
+    if selectedRelevant then
+        Debug("scan: scoring by selected Pawn scale (" .. selectedPawnScale .. ")")
+    elseif foreverScoring then
+        Debug("scan: scoring by Forever " ..
+            (selectedPawnScale and "class weights (selected Pawn scale unavailable)" or
+             "class weights (" .. cw.RoleLabel(cw.GetRole()) .. ")"))
+        if selectedPawnScale then
+            Debug("scan: selected Pawn scale unavailable — using class weights")
+        end
     elseif not relevant then
         -- No scale for the spec being played (or no Pawn at all). Item level takes over so the
         -- advisor still says something; see ScoreByItemLevel for why crude beats silent.
@@ -795,17 +792,18 @@ function GearAdvisor.Scan()
         -- `relevant and ... or ...`: with Pawn present but this item not yet cached, ScoreItem
         -- returns nil and that has to STAY nil, not quietly drop through to the cruder scorer
         -- and mix two kinds of verdict inside one scan.
-        local result
+        local result, _, retryable
         if relevant then
             result = ps.ScoreItem(c.link, spec, relevant)
-        elseif classStats then
-            result = ScoreByClassWeights(cw, c.link, c.invType)
+        elseif foreverScoring then
+            result, _, retryable = ScoreByForeverGearScoring(c.link, gearScoring, gearScoringContext)
         else
             result = ScoreByItemLevel(c.link, c.invType)
         end
         if result then
             scored = scored + 1
-        elseif relevant or classStats or not C_Item.GetItemInfo(c.link) then
+        elseif (relevant and retryable ~= false) or (foreverScoring and retryable)
+               or not C_Item.GetItemInfo(c.link) then
             -- No verdict, as opposed to "not an upgrade": the item (or what it would replace)
             -- hasn't loaded. Item level answers nil for both, so it only counts when the item
             -- itself is uncached.
@@ -821,6 +819,9 @@ function GearAdvisor.Scan()
                 id           = c.id,
                 byItemLevel  = result.byItemLevel,  -- say so in the prompt; it's a weaker claim
                 byClassStats = result.byClassStats,
+                byPawnScale  = result.byPawnScale,
+                destinationSlot = result.destinationSlot,
+                baselineScore = result.baselineScore,
             }
             -- Keyed by DESTINATION SLOT, not equip location: a shield, an off-hand weapon
             -- and a held-in-off-hand frill are three equip locations that all land in slot
@@ -840,7 +841,8 @@ function GearAdvisor.Scan()
     recommendations = recs
     lastFingerprint = fp
     lastScanNote = ("%s: %d scored by %s, %d recommendation(s)%s"):format(date("%H:%M:%S"), scored,
-        relevant and "Pawn" or (classStats and "class weights" or "item level"),
+        relevant and "Pawn" or (selectedRelevant and "Pawn scale"
+            or (foreverScoring and "Forever scoring" or "item level")),
         (function() local n = 0 for _ in pairs(recs) do n = n + 1 end return n end)(),
         unsettled > 0 and (", " .. unsettled .. " not loaded yet") or "")
 
@@ -872,22 +874,26 @@ function GearAdvisor.Scan()
     local nRecs = 0
     for _ in pairs(recs) do nRecs = nRecs + 1 end
     Debug(string.format("scan: %d equippable in bags, %d in scorable slots, %d scored (%s), %d recommendation(s)",
-        seen, #candidates, scored, relevant and "Pawn" or (classStats and "class weights" or "item level"), nRecs))
+        seen, #candidates, scored, relevant and "Pawn" or (selectedRelevant and "Pawn scale"
+            or (foreverScoring and "Forever scoring" or "item level")), nRecs))
 
     -- A prompt outlives the scan that raised it, so it can go stale: equip the item
     -- yourself (or sell it, or find something better), and the rebuild above drops it from
     -- the list while the toast is still on screen asking you to equip what you are already
     -- wearing. If the item being asked about is no longer recommended, the question is
     -- void — release the prompt so the pass below withdraws it or moves to the next one.
+    local refreshPrompt = promptedID ~= nil
     WithdrawPromptIfStale()
 
-    -- Offer the best suggestion, unless a prompt is already up waiting on you. Nothing is
-    -- suppressed for merely having been shown — only your Skip / Never does that — so an
-    -- item you equip and later take off is offered again.
+    -- Keep an existing offer current as more loot lands: the same toast can gain an "Equip
+    -- All" action and an updated waiting count without repeating its attention sound.
     if TravelHold() then
+        promptedID = nil
+        local toast = GetToast()
+        if toast and toast.Hide then toast.Hide() end
         HoldRecheck()  -- mid-trip: ask on the other side, where the answer is useful
-    elseif not promptedID then
-        ShowNextPrompt()
+    else
+        ShowNextPrompt(refreshPrompt and promptedID ~= nil)
     end
 
     RefreshUI()
@@ -979,12 +985,24 @@ function GearAdvisor.EquipRec(rec, manual)
     if not rec then return false end
     if not CanEquipNow() then return false end
     if not rec.bound and not manual then return false end
+    if JustQuest.Constants.IS_FOREVER then
+        local result, reason = ScoreByForeverGearScoring(rec.link)
+        if not result or not result.isUpgrade then
+            Debug("equip declined: " .. (reason or "no longer an upgrade"))
+            return false
+        end
+        rec.destinationSlot = result.destinationSlot
+        rec.existingLink = result.existingItemLink
+        rec.pct = result.pawnPercentUpgrade
+        rec.baselineScore = result.baselineScore
+    end
     local slot = ResolveSlot(rec)
     if not slot then return false end
     -- Already on the character: the scan behind this recommendation can predate the equip that
     -- satisfied it. Firing again would raise a confirmation for an item that has left the bags,
     -- and the batch would then sit waiting for an answer that never comes.
-    if GetInventoryItemID("player", slot) == rec.id then return false end
+    if GetInventoryItemLink("player", slot) == rec.link
+       or (not JustQuest.Constants.IS_FOREVER and GetInventoryItemID("player", slot) == rec.id) then return false end
     if UniqueConflict(rec.link, slot) then return false end  -- can't wear a second copy
     -- Taking the off-hand off is a second, unscored change to the player's gear. Pawn
     -- rated the main hand alone, so we cannot claim this is an upgrade — and silently
@@ -1077,10 +1095,9 @@ function GearAdvisor.EquipAll(manual)
     if not promptedID then
         if #equipped == 1 then
             local rec = equipped[1]
-            local ps = GetPawnScoring()
             Announce{
                 head = "Equipped upgrade", text = rec.link, link = rec.link,
-                sub = (ps and ps.FormatUpgrade(rec.pct)) or "upgrade",
+                sub = FormatUpgrade(rec),
             }
         elseif #equipped > 1 then
             local links = {}
@@ -1152,7 +1169,13 @@ function GearAdvisor.Diagnose()
     p(("active spec: %s (index %s) | loot-spec index: %s | class: %s (id %s)"):format(
         tostring(activeName), tostring(activeIdx), tostring(lootIdx), tostring(className), tostring(classID)))
 
-    if PawnCommon and PawnCommon.Scales then
+    if JustQuest.Constants.IS_FOREVER then
+        local selectedScale = ps and ps.GetConfiguredForeverScale()
+        local selectedScaleAvailable = selectedScale and ps.RelevantScale(selectedScale)
+        p(selectedScale and ("Forever Pawn scale: " .. selectedScale
+            .. (selectedScaleAvailable and "" or " (unavailable; falling back to class/role weights)"))
+            or "Forever uses JustQuest class/role weights; unknown effects are left for manual review.")
+    elseif PawnCommon and PawnCommon.Scales then
         local anyVisible = false
         for name, scale in pairs(PawnCommon.Scales) do
             if PawnIsScaleVisible and PawnIsScaleVisible(name) then
@@ -1171,19 +1194,26 @@ function GearAdvisor.Diagnose()
     end
 
     local mh = GetInventoryItemLink("player", 16)
-    if mh and ps then
+    if mh and ps and not JustQuest.Constants.IS_FOREVER then
         local r = ps.ScoreItem(mh, activeIdx)
         p("equipped weapon: " .. mh .. " -> " .. (r and ("upgrade=" .. tostring(r.isUpgrade)) or "nil (no verdict)"))
     end
 
     -- Resolved once, exactly as the scan does it, so the verdicts below are the ones the
     -- engine would actually reach rather than a second opinion computed a different way.
-    local relevant = ps and ps.RelevantScales(activeIdx)
+    local selectedPawnScale = JustQuest.Constants.IS_FOREVER and ps
+        and ps.GetConfiguredForeverScale()
+    local selectedRelevant = selectedPawnScale and ps.RelevantScale(selectedPawnScale)
+    local relevant = not JustQuest.Constants.IS_FOREVER and ps
+        and ps.RelevantScales(activeIdx) or nil
     local cw = GetClassWeights()
-    local classStats = not relevant and cw and cw.IsActive()
-    if classStats then
-        p(("scoring by class weights — role: %s  (change it in the Gear tab or with /jq gear role; /jq gear stats shows the math)")
-            :format(cw.RoleLabel(cw.GetRole())))
+    local foreverScoring = JustQuest.Constants.IS_FOREVER and cw and cw.IsActive()
+    if selectedRelevant then
+        p("scoring by selected Pawn scale: " .. selectedPawnScale)
+    elseif foreverScoring then
+        p(("scoring by class weights — role: %s  (change it in the Gear tab or with /jq gear role; /jq gear stats shows the math)%s")
+            :format(cw.RoleLabel(cw.GetRole()),
+                selectedPawnScale and " — selected Pawn scale unavailable" or ""))
     end
 
     local found = false
@@ -1193,29 +1223,28 @@ function GearAdvisor.Diagnose()
             local link = info and info.hyperlink
             if link and C_Item.IsEquippableItem(link) then
                 local invType = select(4, C_Item.GetItemInfoInstant(link))
-                if invType and INVTYPE_SLOTS[invType] then
+                if ComparableSlots(invType) then
                     found = true
-                    local cached = PawnGetItemData and (PawnGetItemData(link) ~= nil)
-                    local r
+                    local cached = C_Item.GetItemInfo(link) ~= nil
+                    local r, unknownReason
                     if relevant then
                         r = ps.ScoreItem(link, activeIdx, relevant)
-                    elseif classStats then
-                        local slots = ComparableSlots(invType)
-                        r = cw.CompareToEquipped(link, slots, DisplacedOffHand(invType, slots[1]))
+                    elseif foreverScoring then
+                        r, unknownReason = ScoreByForeverGearScoring(link)
                     else
                         r = ScoreByItemLevel(link, invType)
                     end
                     -- Report the item levels the verdict turns on: a Pawn percentage is a
                     -- ratio, so it reads the same whether the baseline is comparable or
                     -- scores near zero. Only the levels show which one you're looking at.
-                    local verdict = "nil"
+                    local verdict = unknownReason and ("unknown: " .. unknownReason) or "nil"
                     if r and r.byClassStats then
-                        local slots = ComparableSlots(invType)
-                        verdict = ("[class stats] upgrade=%s pct=%.2f score=%.1f vs %s"):format(
+                        verdict = ("[class stats] upgrade=%s score delta=%.2f score=%.1f vs %.1f (slot %s)"):format(
                             tostring(r.isUpgrade), r.pawnPercentUpgrade or 0,
-                            cw.Score(link, slots[1]) or -1,
-                            r.existingItemLink and ("%.1f"):format(cw.Score(r.existingItemLink, slots[1]) or -1)
-                                or "empty slot")
+                            r.candidateScore, r.baselineScore, tostring(r.destinationSlot))
+                    elseif r and r.byPawnScale then
+                        verdict = ("[Pawn scale] upgrade=%s pct=%.2f"):format(
+                            tostring(r.isUpgrade), r.pawnPercentUpgrade or 0)
                     elseif r then
                         verdict = ("%supgrade=%s pct=%.2f ilvl=%s vs %s"):format(
                             r.byItemLevel and "[item level] " or "",
@@ -1263,11 +1292,26 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 frame:RegisterEvent("BAG_UPDATE_DELAYED")
-frame:RegisterEvent("PLAYER_LEVEL_UP")
-frame:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE")
--- Talent-change events differ between clients; register whichever exist.
-for _, event in ipairs({ "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE" }) do
-    pcall(frame.RegisterEvent, frame, event)
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+if JustQuest.Constants.IS_FOREVER then
+    if EventRegistry then
+        EventRegistry:RegisterCallback("JustQuest.GearScoringChanged", function(_, reason)
+            wipe(usableCache)
+            if reason == "role" then
+                GearAdvisor.RescanNow()
+            elseif Enabled() then
+                ScanThenMaybeEquip(true)
+            end
+        end, GearAdvisor)
+    end
+else
+    frame:RegisterEvent("PLAYER_LEVEL_UP")
+    frame:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE")
+    -- Talent-change events differ between clients; register whichever exist.
+    for _, event in ipairs({ "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE" }) do
+        pcall(frame.RegisterEvent, frame, event)
+    end
 end
 frame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
@@ -1312,27 +1356,10 @@ frame:SetScript("OnEvent", function(_, event, arg1)
         setItemIDs = nil
         if Enabled() then ScheduleScan(true) end
 
-    elseif event == "LEARNED_SPELL_IN_SKILL_LINE" then
-        -- Trainers teach what you can wear on Forever: Mail / Plate Mail at 40, Dual Wield,
-        -- weapon types. The bags haven't changed, so drop the verdicts and force the scan, or
-        -- the gear that just became wearable stays hidden. On retail it is a cheap rescan.
-        wipe(usableCache)
-        local cw = GetClassWeights()
-        if cw then cw.Invalidate() end  -- a new talent / racial can change weapon-type bonuses
-        if Enabled() then ScanThenMaybeEquip(true) end
-
     elseif event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_TALENT_UPDATE" then
-        -- Talents changed: weapon-type bonuses (Two-Handed Weapon Specialization, Weapon
-        -- Mastery...) may have come or gone.
-        local cw = GetClassWeights()
-        if cw then cw.Invalidate() end
         if Enabled() then ScanThenMaybeEquip(true) end
 
-    elseif event == "PLAYER_LEVEL_UP" then
-        -- Gear held back for being over-level can become wearable here, and the bags
-        -- haven't changed — so the usability verdicts have to be dropped and the scan
-        -- forced past its fingerprint check, or the newly-legal upgrade stays invisible
-        -- until something unrelated moves in your bags.
+    elseif event == "PLAYER_LEVEL_UP" or event == "LEARNED_SPELL_IN_SKILL_LINE" then
         wipe(usableCache)
         if Enabled() then ScanThenMaybeEquip(true) end
 
@@ -1341,11 +1368,16 @@ frame:SetScript("OnEvent", function(_, event, arg1)
         -- so it costs a bag walk and stops there unless equippable contents moved.
         if Enabled() then ScanThenMaybeEquip() end
 
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        local toast = GetToast()
+        if toast and toast.Hide then toast.Hide() end
+
     elseif event == "PLAYER_REGEN_ENABLED" then
-        frame:UnregisterEvent("PLAYER_REGEN_ENABLED")
         if pendingEquip then
             GearAdvisor.EquipAll(pendingManual)  -- clears pendingEquip on success, else re-defers
         end
+        promptedID = nil
+        if Enabled() then ScheduleScan(true) end
     end
 end)
 

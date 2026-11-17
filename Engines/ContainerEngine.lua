@@ -21,6 +21,7 @@ local lastBagUpdateTime = 0
 local bagUpdateCount = 0
 local isBagSortActive = false
 local expectedContainers = {}  -- Track containers we expect from quest rewards
+local requiredQuestLoot = {}
 
 -- Cache config to avoid repeated lookups during bag iteration
 local configCache = {
@@ -28,6 +29,7 @@ local configCache = {
     whitelist = {},
     blacklist = {},
     mode = "safe",
+    openQuestLoot = false,
     lastUpdate = 0,
 }
 
@@ -39,6 +41,7 @@ local function UpdateConfigCache()
     configCache.whitelist = config.Get("containers", "whitelist") or {}
     configCache.blacklist = config.Get("containers", "blacklist") or {}
     configCache.mode = config.Get("containers", "mode") or "safe"
+    configCache.openQuestLoot = config.Get("containers", "openQuestLoot") == true
     configCache.lastUpdate = GetTime()
 end
 
@@ -53,6 +56,46 @@ local function Debug(msg)
         end
     end
     debugFunc(msg)
+end
+
+local function RefreshRequiredQuestLoot()
+    wipe(requiredQuestLoot)
+    if not configCache.openQuestLoot or configCache.mode == "list" then return end
+    if not (Questie and Questie.API and Questie.API.isReady and QuestieLoader and LibQuestieDB
+            and LibQuestieDB.RequireContract and LibQuestieDB.Item and LibQuestieDB.Item.Get) then
+        Debug("Required quest-loot opening unavailable: Questie and QuestieDB must be ready")
+        return
+    end
+    local supported, reason = LibQuestieDB.RequireContract(4)
+    if not supported then
+        Debug("Required quest-loot opening unavailable: "..tostring(reason))
+        return
+    end
+
+    local activeQuests = QuestieLoader:ImportModule("ActiveQuests")
+    local visited = {}
+    local function AddSources(itemID)
+        if visited[itemID] then return end
+        visited[itemID] = true
+        for _, sourceID in ipairs(LibQuestieDB.Item.Get(itemID, "itemDrops") or {}) do
+            requiredQuestLoot[sourceID] = true
+            AddSources(sourceID)
+        end
+    end
+    for questID, acceptance in activeQuests.Iterate() do
+        local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+        local quest = acceptance.quest
+        if logIndex and not C_QuestLog.IsComplete(questID) and quest and quest.ObjectiveData then
+            for index, objective in ipairs(quest.ObjectiveData) do
+                if objective.Type == "item" then
+                    local text, nativeType, finished = GetQuestLogLeaderBoard(index, logIndex)
+                    if text and nativeType == "item" and not finished then
+                        AddSources(objective.Id)
+                    end
+                end
+            end
+        end
+    end
 end
 
 local function ForEachBagItem()
@@ -106,13 +149,16 @@ local function ShouldOpen(bagID, slotID, info)
 
     if configCache.mode == "list" then return false end  -- whitelist only
 
-    -- Never auto-open a quest item. The openable flag is set on plenty of them
+    -- Do not open arbitrary quest items. The openable flag is set on plenty of them
     -- ("Package of Identified Plants", "Bundle of Reports"), and opening one out of
     -- quest order can consume something that isn't re-obtainable. The blacklist can't
     -- cover this — it's a hand-curated list against a whole item class. Whitelisting
-    -- one explicitly still works: that check is above.
+    -- one explicitly still works. The quest-loot category admits only proven sources.
     local classID = select(6, C_Item.GetItemInfoInstant(itemID))
-    if classID == JustQuest.Constants.ITEM_CLASS.QUESTITEM then return false end
+    if classID == JustQuest.Constants.ITEM_CLASS.QUESTITEM
+       and not (configCache.openQuestLoot and requiredQuestLoot[itemID]) then
+        return false
+    end
 
     if not info.hasLoot then return false end  -- not an openable container
 
@@ -438,6 +484,7 @@ function ContainerEngine.OpenBagContainers()
         lastScanTime = currentTime
     end
 
+    RefreshRequiredQuestLoot()
     for bagID, slotID, info in ForEachBagItem() do
         local result = ProcessContainerItem(bagID, slotID, info, currentTime)
         if result == true then
@@ -455,9 +502,8 @@ end
 -- ============================================================
 -- Its own pass, governed by the QUEST settings rather than the container toggle: starting a
 -- quest is accepting one, so it goes through the same accept filter as every other quest.
--- Kept apart from ProcessContainerItem, which still never opens a quest-class item — opening
--- one out of quest order can consume something you can't get back; starting the quest it
--- begins is the item's whole purpose.
+-- Kept apart from ProcessContainerItem: quest starters are governed by the quest accept
+-- filters, while quest-loot containers must supply an unfinished accepted objective.
 local triedQuestItems = {}  -- [questID] = true: one try per session (a level-locked quest refuses)
 local lastQuestScan = 0
 -- ponytail: a full bag walk per scan (one quest-info read per slot), capped at once a second;
@@ -564,8 +610,8 @@ function ContainerEngine.OnAutomationComplete()
         end
     end
     
-    -- Only scan if we have expected containers
-    if hasExpected then
+    -- Accepting a quest can make a container already in the bags relevant.
+    if hasExpected or (configCache.openQuestLoot and configCache.mode ~= "list") then
         -- Wait for safe idle time to confirm automation has fully finished
         local services = GetServices()
         local scanDelay = services and services.GetTiming and services.GetTiming("CONTAINER_SCAN_AFTER_AUTOMATION", 0.25) or 0.25

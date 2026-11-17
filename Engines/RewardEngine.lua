@@ -13,7 +13,6 @@ local GetConfig       = JustQuest.Core.ModuleGetter("Config")
 local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
 local GetGameData     = JustQuest.Core.ModuleGetter("GameData")
 local GetPawnScoring  = JustQuest.Core.ModuleGetter("PawnScoring")
-local GetClassWeights = JustQuest.Core.ModuleGetter("ClassWeights")
 
 -- ============================================================
 -- Reward Processing State
@@ -156,6 +155,10 @@ function RewardEngine.ProcessQuestReward(fresh)
     if services.CancelScheduled then services.CancelScheduled("reward_data_retry") end
     
     if config and config.Get("quest", "autoReward") then
+        if RewardEngine.RequiresManualReview(numChoices) then
+            RewardEngine.HaltForManualSelection("special_reward_choice")
+            return
+        end
         if config.Get("quest", "simpleRewardMode") then
             if services.Debug then
                 services.Debug("Rewards", "Simple mode: selecting highest vendor value")
@@ -201,6 +204,12 @@ function RewardEngine.SelectReward(choiceIndex)
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
 
+    -- Recheck every offered choice at the action boundary, not just the selected item.
+    if RewardEngine.RequiresManualReview(GetNumQuestChoices and GetNumQuestChoices() or 0) then
+        RewardEngine.HaltForManualSelection("special_reward_choice")
+        return
+    end
+
     -- Mirror Blizzard's own reward button: if the quest costs money, do not auto-confirm.
     -- GetQuestReward would silently spend gold without the normal confirmation popup.
     local moneyRequired = GetQuestMoneyToGet and GetQuestMoneyToGet() or 0
@@ -215,6 +224,7 @@ function RewardEngine.SelectReward(choiceIndex)
     services.Debug("Rewards", "Selecting reward: " .. tostring(choiceIndex or "default"))
     
     services.SafeCall(GetQuestReward, choiceIndex)
+    if services.NoteStep then services.NoteStep() end
     JustQuest._stats.getRewardCalls = (JustQuest._stats.getRewardCalls or 0) + 1
     JustQuest._lastProcessingTime = GetTime()
 
@@ -248,7 +258,29 @@ end
 -- Fast Path: Trivial Rewards
 -- ============================================================
 
+function RewardEngine.RequiresManualReview(numChoices)
+    if numChoices <= 1 then return false end
+    local gameData, services = GetGameData(), GetServices()
+    for i = 1, numChoices do
+        local lootType = GetQuestItemInfoLootType and GetQuestItemInfoLootType("choice", i) or 0
+        local reason
+        if lootType ~= 0 then
+            reason = "non-item reward choice"
+        elseif not (gameData and gameData.RewardReviewReason) then
+            reason = "reward analysis unavailable"
+        else
+            reason = gameData.RewardReviewReason(GetQuestItemLink and GetQuestItemLink("choice", i))
+        end
+        if reason then
+            if services then services.Debug("Rewards", "Manual review: choice " .. i .. " - " .. reason) end
+            return true
+        end
+    end
+    return false
+end
+
 function RewardEngine.AllRewardsTrivial(numChoices)
+    if RewardEngine.RequiresManualReview(numChoices) then return false end
     -- Trivial = all choices are low-quality non-equippable items with no special value.
     -- Currency choices and any equippable gear (even uncommon/green) always go through
     -- smart analysis: green gear can be a real upgrade in current-content leveling.
@@ -382,6 +414,7 @@ function RewardEngine.AnalyzeRewardChoices(numChoices)
                 end
 
                 choice.canUse = gameData.CanPlayerUseItem(itemLink)
+                choice.manualReviewReason = gameData.RewardReviewReason(itemLink)
                 choice.isSignificant = gameData.IsSignificantReward and gameData.IsSignificantReward(i) or false
                 choice.index = i
                 choices[i] = choice
@@ -421,6 +454,23 @@ function RewardEngine.CompareWithEquipped(rewardInfo)
         return { isUpgrade = false, reason = "profession_tool" }
     end
 
+    if JustQuest.Constants.IS_FOREVER then
+        local scoring = JustQuest.Core.GetModule("GearScoring")
+        local result = scoring and scoring.EvaluateItem(rewardInfo.itemLink)
+        if not result or result.status == "unknown" then
+            return { status = "unknown", reason = result and result.reason or "class_stats_unknown", rewardLevel = rewardLevel }
+        end
+        return {
+            isUpgrade = result.isUpgrade,
+            reason = result.byPawnScale
+                and (result.isUpgrade and "pawn_upgrade" or "pawn_not_upgrade")
+                or (result.isUpgrade and "class_stats_upgrade" or "class_stats_not_upgrade"),
+            pawnPercentUpgrade = result.isUpgrade and result.pawnPercentUpgrade or nil,
+            baselineScore = result.baselineScore,
+            rewardLevel = rewardLevel,
+        }
+    end
+
     -- Pawn: spec-aware stat-weight scoring (falls back to ilvl when Pawn is absent,
     -- item not yet cached, or no relevant scales are configured for the active spec).
     if rewardInfo.itemLink then
@@ -430,21 +480,6 @@ function RewardEngine.CompareWithEquipped(rewardInfo)
                 isUpgrade          = pawnResult.isUpgrade,
                 reason             = pawnResult.isUpgrade and "pawn_upgrade" or "pawn_not_upgrade",
                 pawnPercentUpgrade = pawnResult.pawnPercentUpgrade,
-                rewardLevel        = rewardLevel,
-            }
-        end
-    end
-
-    -- Forever: item levels don't mean anything there, so the class + role weights decide, the
-    -- same scorer the gear advisor uses.
-    local cw = GetClassWeights()
-    if cw and cw.IsActive() and rewardInfo.itemLink then
-        local result = cw.CompareToEquipped(rewardInfo.itemLink, gameData.ComparableSlots(rewardInfo.equipSlot))
-        if result then
-            return {
-                isUpgrade          = result.isUpgrade,
-                reason             = result.isUpgrade and "class_stats_upgrade" or "class_stats_not_upgrade",
-                pawnPercentUpgrade = result.isUpgrade and result.pawnPercentUpgrade or nil,
                 rewardLevel        = rewardLevel,
             }
         end
@@ -513,14 +548,22 @@ local function PreferHighestArmorType(choices)
 end
 
 function RewardEngine.SelectSmartChoice(choices)
+    for _, choice in ipairs(choices) do
+        if choice.manualReviewReason or choice.isCurrency then
+            local services = GetServices()
+            if services then services.Debug("Rewards", "Special reward choice - manual selection required") end
+            return nil
+        end
+    end
     -- Class-appropriate armor first: a plate class never auto-picks the cloth/
     -- leather/mail version of a reward when plate is offered and usable.
-    choices = PreferHighestArmorType(choices)
+    if not JustQuest.Constants.IS_FOREVER then choices = PreferHighestArmorType(choices) end
 
     local usableChoices = {}
     local significantChoices = {}
     local unknownCollectibles = {}
     local upgrades = {}
+    local unknownGear = false
     
     for i, choice in ipairs(choices) do
         if choice and choice.canUse ~= false then
@@ -539,6 +582,7 @@ function RewardEngine.SelectSmartChoice(choices)
             if choice.upgradeInfo and choice.upgradeInfo.isUpgrade then
                 table.insert(upgrades, choice)
             end
+            if choice.upgradeInfo and choice.upgradeInfo.status == "unknown" then unknownGear = true end
         end
     end
     
@@ -561,6 +605,11 @@ function RewardEngine.SelectSmartChoice(choices)
     -- PRIORITY 2: Halt for significant items (Epic+, BoE)
     if #significantChoices > 0 then
         services.Debug("Rewards", #significantChoices .. " significant choice(s) detected - halting for manual selection")
+        return nil
+    end
+
+    if unknownGear then
+        services.Debug("Rewards", "Gear score unknown - halting for manual selection")
         return nil
     end
     
@@ -595,10 +644,16 @@ function RewardEngine.SelectSmartChoice(choices)
         if info.pawnPercentUpgrade and info.pawnPercentUpgrade > 0 then
             -- PawnBigUpgradeThreshold = 100 is a sentinel for "no baseline / empty slot" (= 10000%).
             -- Display it as a plain "big upgrade" rather than a nonsense percentage.
-            local pctDisplay = info.pawnPercentUpgrade >= 99
-                and "big upgrade (no baseline)"
-                or string.format("%.0f%% better by stat weight", info.pawnPercentUpgrade * 100)
-            services.Debug("Rewards", string.format("PRIORITY: Pawn upgrade - %s (%s)",
+            local pctDisplay
+            if JustQuest.Constants.IS_FOREVER then
+                pctDisplay = JustQuest.Core.GetModule("GearScoring").FormatUpgrade(
+                    info.pawnPercentUpgrade, info.baselineScore)
+            else
+                pctDisplay = info.pawnPercentUpgrade >= 99
+                    and "big upgrade (no baseline)"
+                    or string.format("%.0f%% better by stat weight", info.pawnPercentUpgrade * 100)
+            end
+            services.Debug("Rewards", string.format("PRIORITY: Stat upgrade - %s (%s)",
                 bestUpgrade.name, pctDisplay))
         else
             services.Debug("Rewards", string.format("PRIORITY: Upgrade - %s (+%d ilvl)",

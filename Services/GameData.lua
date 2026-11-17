@@ -262,6 +262,49 @@ function GameData.IsCollectibleKnown(itemInfo)
     return false
 end
 
+-- Verified Item/ItemXItemEffect/ItemEffect joins in Forever 1.60.1.70790.
+-- Item ID -> { consumable subclass, use spell }. Never generalize to a whole subclass.
+local FOREVER_ORDINARY_REWARDS = {
+    [858] = { 1, 440 },   -- Lesser Healing Potion
+    [1251] = { 7, 746 },  -- Linen Bandage
+    [4540] = { 5, 433 },  -- Tough Hunk of Bread
+}
+
+-- Multi-choice rewards with unpriced utility must not lose to a vendor-value heuristic.
+function GameData.RewardReviewReason(itemLink)
+    if not itemLink then return "reward data unavailable" end
+    local name, _, quality, _, _, _, _, _, equipSlot, _, _, classID, subclassID = GetItemInfo(itemLink)
+    if not name or not classID or not quality then return "reward data unavailable" end
+    local IC = JustQuest.Constants.ITEM_CLASS
+    if classID == IC.RECIPE then return "recipe or learning book" end
+    if quality >= 5 then return "special-quality reward" end
+    if classID == IC.PROFESSION then return "profession equipment" end
+    if equipSlot and equipSlot ~= "" then return nil end
+    -- Only ordinary consumables and trade goods are candidates for automatic vendor ranking.
+    -- Other classes include containers, quest items, collectibles, and miscellaneous tokens.
+    if classID ~= IC.CONSUMABLE and classID ~= IC.TRADEGOODS then return "special reward category" end
+    if not C_Item.GetItemSpell then return "reward effect detection unavailable" end
+    local spellName, spellID = C_Item.GetItemSpell(itemLink)
+    local services = JustQuest.Core.GetModule("Services")
+    local itemID = services and services.GetItemIDFromLink(itemLink)
+    local ordinary = JustQuest.Constants.IS_FOREVER and FOREVER_ORDINARY_REWARDS[itemID]
+    local verifiedUse = ordinary and classID == IC.CONSUMABLE and quality == 1
+        and subclassID == ordinary[1] and spellName ~= nil and spellID == ordinary[2]
+    if (spellName or spellID) and not verifiedUse then return "usable reward effect" end
+    local lines = GameData.TooltipLines(itemLink)
+    if not lines or #lines == 0 then return "reward tooltip unavailable" end
+    local types = Enum and Enum.TooltipDataLineType
+    if not (types and types.ItemSpellTriggerOnUse and types.ItemSpellTriggerOnEquip
+            and types.ItemSpellTriggerOnProc) then return "reward effect detection unavailable" end
+    for _, line in ipairs(lines) do
+        if (line.type == types.ItemSpellTriggerOnUse and not verifiedUse)
+           or line.type == types.ItemSpellTriggerOnEquip
+           or line.type == types.ItemSpellTriggerOnProc then
+            return "reward effect not evaluated"
+        end
+    end
+end
+
 function GameData.IsSignificantReward(choiceIndex)
     local itemLink = GetQuestItemLink and GetQuestItemLink("choice", choiceIndex)
     if not itemLink then 
@@ -345,6 +388,42 @@ function GameData.TooltipLines(itemLink)
     return SurfacedLines(pcall(C_TooltipInfo.GetHyperlink, itemLink))
 end
 
+-- Loaded statless gear can have no stat table. Base armor comes from the tooltip.
+function GameData.ItemStats(itemLink)
+    if not itemLink or not C_Item.GetItemInfo(itemLink) then return nil end
+    local ok, stats = pcall(C_Item.GetItemStats, itemLink)
+    if not ok or (stats ~= nil and type(stats) ~= "table") then
+        local services = JustQuest.Core.GetModule("Services")
+        if services then services.Debug("GameData", "GetItemStats failed: " .. tostring(stats)) end
+        return nil
+    end
+    local out = {}
+    for key, value in pairs(stats or {}) do
+        if type(key) ~= "string" or type(value) ~= "number"
+           or value ~= value or math.abs(value) == math.huge then
+            local services = JustQuest.Core.GetModule("Services")
+            if services then services.Debug("GameData", "Invalid item stat: " .. tostring(key)) end
+            return nil
+        end
+        out[key] = value
+    end
+    local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemLink)
+    -- Pawn reads weapon DPS from the tooltip. Some Forever weapons omit it from GetItemStats.
+    if classID == JustQuest.Constants.ITEM_CLASS.WEAPON and not out.ITEM_MOD_DAMAGE_PER_SECOND_SHORT then
+        local dps = GameData.ItemDPS(itemLink)
+        if dps == nil then return nil end
+        if dps > 0 then out.ITEM_MOD_DAMAGE_PER_SECOND_SHORT = dps end
+    end
+    if not out.RESISTANCE0_NAME then
+        if classID == JustQuest.Constants.ITEM_CLASS.ARMOR then
+            local armor = GameData.ItemArmor(itemLink)
+            if armor == nil then return nil end
+            if armor > 0 then out.RESISTANCE0_NAME = armor end
+        end
+    end
+    return out
+end
+
 -- Same, for the item actually sitting in a bag slot. Not interchangeable with the hyperlink
 -- call: only this one reflects per-instance state, so a lockbox whose lock has already been
 -- picked stops reading as locked.
@@ -358,7 +437,7 @@ end
 -- profession — comes from red tooltip text, which is the game's own verdict and needs no
 -- table maintained against it. Anything unexpected degrades to "no requirement failed",
 -- so a false "usable" is never worse than the behaviour this replaced.
-function GameData.ItemFailsARequirement(itemLink)
+function GameData.ItemFailsARequirement(itemLink, tooltipLines)
     if not itemLink then return false end
 
     local minLevel = select(5, C_Item.GetItemInfo(itemLink))
@@ -366,7 +445,7 @@ function GameData.ItemFailsARequirement(itemLink)
 
     if GameData.LacksProficiency(itemLink) then return true end
 
-    local lines = GameData.TooltipLines(itemLink)
+    local lines = tooltipLines or GameData.TooltipLines(itemLink)
     if not lines then return false end
 
     -- Both columns: the weapon / armour type a character can't use is the RIGHT-hand text of
@@ -485,6 +564,32 @@ function GameData.ItemArmor(itemLink)
     return 0
 end
 
+-- A weapon's tooltip DPS ("(4.62 damage per second)"). nil when the tooltip isn't available
+-- yet; 0 when there's no DPS line.
+local DPS_PATTERN
+function GameData.ItemDPS(itemLink)
+    local lines = GameData.TooltipLines(itemLink)
+    if not lines then return nil end
+    if not DPS_PATTERN then
+        local template = DPS_TEMPLATE or "(%s damage per second)"
+        DPS_PATTERN = "^" .. template:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+                                     :gsub("%%[sd]", "([%%d,%%.]+)") .. "$"
+    end
+    for _, line in ipairs(lines) do
+        for _, text in ipairs({ line and line.leftText, line and line.rightText }) do
+            local value = type(text) == "string" and text:match(DPS_PATTERN)
+            if value then
+                -- One separator is the decimal mark; anything before it groups thousands.
+                local whole, fraction = value:match("^(.-)[,%.](%d+)$")
+                local number = whole and tonumber(whole:gsub("[,%.]", "") .. "." .. fraction)
+                    or tonumber((value:gsub("[,%.]", "")))
+                return number or 0
+            end
+        end
+    end
+    return 0
+end
+
 -- Whether a one-handed weapon competes for the off-hand slot at all. Only for a character who
 -- can dual wield, and only against another weapon or an empty hand: a shield or held-in-off-hand
 -- item is a different kind of gear, not a weaker weapon. Without this a caster was offered a
@@ -522,10 +627,23 @@ end
 
 function GameData.OneHanderFitsOffHand()
     if not (CanDualWield and CanDualWield()) then return false end
+    local main = GetInventoryItemLink("player", 16)
     local off = GetInventoryItemLink("player", 17)
+    if JustQuest.Constants.IS_FOREVER and main
+       and select(4, C_Item.GetItemInfoInstant(main)) == "INVTYPE_2HWEAPON"
+       and not off then return false end
     if not off then return true end
     local ok, _, _, _, _, _, classID = pcall(C_Item.GetItemInfoInstant, off)
     return ok and classID == JustQuest.Constants.ITEM_CLASS.WEAPON
+end
+
+function GameData.DisplacedOffHand(invType, dest)
+    if dest ~= 16 or invType ~= "INVTYPE_2HWEAPON" then return nil end
+    local off = GetInventoryItemLink("player", 17)
+    if not off then return nil end
+    local main = GetInventoryItemLink("player", 16)
+    if main and select(4, C_Item.GetItemInfoInstant(main)) == "INVTYPE_2HWEAPON" then return nil end
+    return off
 end
 
 -- The item stat each primary stat is named by. Built on first use: the LE_UNIT_STAT globals
@@ -564,28 +682,10 @@ local function SpecPrimaryStatKey()
     return PrimaryStatKey()[primaryStat]
 end
 
--- Forever: no spec names a primary stat, and vanilla's hybrids genuinely use several, so the
--- question goes to the class — and only for the classes with an unambiguous answer. Paladins,
--- shamans, druids and hunters stay open. Built on first use, like PrimaryStatKey.
-local FOREVER_OFF_STATS
-local function ForeverOffStats()
-    if FOREVER_OFF_STATS then return FOREVER_OFF_STATS end
-    local STR, AGI, INT = "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_INTELLECT_SHORT"
-    FOREVER_OFF_STATS = {
-        WARRIOR = { [INT] = true }, ROGUE = { [INT] = true },
-        MAGE = { [STR] = true, [AGI] = true }, PRIEST = { [STR] = true, [AGI] = true },
-        WARLOCK = { [STR] = true, [AGI] = true },
-    }
-    return FOREVER_OFF_STATS
-end
-
 function GameData.ItemIsWrongPrimaryStat(itemLink)
-    if not itemLink then return false end
-
+    if not itemLink or JustQuest.Constants.IS_FOREVER then return false end
     local want = SpecPrimaryStatKey()
-    local offStats = not want and JustQuest.Constants.IS_FOREVER
-                     and ForeverOffStats()[GameData.GetPlayerClass()]
-    if not (want or offStats) then return false end  -- no opinion to have
+    if not want then return false end
 
     local okStats, stats = pcall(C_Item.GetItemStats, itemLink)
     if not (okStats and type(stats) == "table") then return false end  -- not cached yet
@@ -595,8 +695,7 @@ function GameData.ItemIsWrongPrimaryStat(itemLink)
     local carriesOurs, carriesOther = false, false
     for _, key in pairs(PrimaryStatKey()) do
         if stats[key] then
-            local ours
-            if want then ours = key == want else ours = not offStats[key] end
+            local ours = key == want
             if ours then carriesOurs = true else carriesOther = true end
         end
     end

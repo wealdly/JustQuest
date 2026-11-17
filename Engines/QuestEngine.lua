@@ -40,12 +40,36 @@ local GetGameData     = JustQuest.Core.ModuleGetter("GameData")
 -- Shows when a quest requires currency consumption and the quest is not whitelisted.
 -- Repeatable quests: 3-button (Spend Once / Cancel / Always Allow)
 -- Non-repeatable quests: 2-button (Spend / Cancel) — whitelisting never makes sense
+-- Approval expires if the quest panel or automation eligibility changes.
 
-local function CurrencyPopup_Spend(data)
-    local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
-    local services = JustQuest.Core.GetModule("Services")
-    if safetyEngine then safetyEngine.SetState("BUSY", "completing_quest") end
-    if services then services.SafeCall(CompleteQuest) end
+local function CurrencyPopup_Spend(data, alwaysAllow)
+    local safetyEngine, services = GetSafetyEngine(), GetServices()
+    -- CanAutomate rejects our own popup. Recheck its other gates and the exact quest instead.
+    local valid = data and type(data.questID) == "number" and data.questID > 0
+        and GetQuestID and GetQuestID() == data.questID
+        and QuestFrameProgressPanel and QuestFrameProgressPanel:IsShown()
+        and IsQuestCompletable and IsQuestCompletable()
+        and safetyEngine and safetyEngine.GetReason() == "waiting_currency_prompt"
+        and safetyEngine.IsBusy() and safetyEngine.ShouldCompleteQuest(data.questID)
+        and services and services.IsAutomationEnabled() and services.ShouldAutomate()
+        and not UnitIsDeadOrGhost("player") and not services.InSpecialControlState()
+        and not services.HasInterferingFrame()
+    if not valid then
+        if services then services.Debug("Quest", "Currency approval expired or automation blocked - not spending") end
+        if safetyEngine and safetyEngine.GetReason() == "waiting_currency_prompt" then
+            safetyEngine.EndProcessing("currency_approval_invalid")
+        end
+        return
+    end
+    if alwaysAllow then
+        local config = GetConfig()
+        if config and config.AddCurrencyQuestWhitelist then
+            config.AddCurrencyQuestWhitelist(data.questID, data.questTitle, data.currencyText)
+        end
+    end
+    safetyEngine.SetState("BUSY", "completing_quest")
+    JustQuest._lastProcessingTime = GetTime()
+    services.SafeCall(CompleteQuest)
 end
 
 local function CurrencyPopup_Cancel()
@@ -69,15 +93,7 @@ StaticPopupDialogs["JUSTQUEST_CONFIRM_CURRENCY"] = {
     button2 = "Cancel",
     button3 = "Always Allow",
     OnAccept = function(self, data) CurrencyPopup_Spend(data) end,
-    OnAlt = function(self, data)
-        if data and data.questID then
-            local config = JustQuest.Core.GetModule("Config")
-            if config and config.AddCurrencyQuestWhitelist then
-                config.AddCurrencyQuestWhitelist(data.questID, data.questTitle, data.currencyText)
-            end
-        end
-        CurrencyPopup_Spend(data)
-    end,
+    OnAlt = function(self, data) CurrencyPopup_Spend(data, true) end,
     OnCancel = function(self, data) CurrencyPopup_Cancel() end,
     OnHide = function(self) CurrencyPopup_Hide() end,
     timeout = 0,
@@ -122,6 +138,17 @@ end
 local function LeaveForPlayer(reason)
     local safetyEngine = GetSafetyEngine()
     if safetyEngine then safetyEngine.EndProcessing(reason) end
+end
+
+local function CompletionDeclined(questID)
+    local safetyEngine = GetSafetyEngine()
+    if safetyEngine and not safetyEngine.ShouldCompleteQuest(questID) then
+        local services = GetServices()
+        if services then services.Debug("Quest", "Quest completion blocked: " .. tostring(questID)) end
+        LeaveForPlayer("quest_completion_declined")
+        return true
+    end
+    return false
 end
 
 -- One filter for "is there quest work here", run once and early by everything that asks:
@@ -181,6 +208,7 @@ end
 -- Returns active, available (actionable only), pending.
 function QuestEngine.GetActionableQuests(rawActive, rawAvailable, log)
     local services = GetServices()
+    local started = services and services.ProfileStart and services.ProfileStart()
     local active, available, pending = {}, {}, false
 
     local function sift(list, skipReason, out)
@@ -200,6 +228,7 @@ function QuestEngine.GetActionableQuests(rawActive, rawAvailable, log)
 
     sift(rawActive or (services and services.SafeCall(C_GossipInfo.GetActiveQuests)), ActiveSkipReason, active)
     sift(rawAvailable or (services and services.SafeCall(C_GossipInfo.GetAvailableQuests)), AvailableSkipReason, available)
+    if services and services.ProfileEnd then services.ProfileEnd("Quest filtering", started) end
     return active, available, pending
 end
 
@@ -208,8 +237,13 @@ end
 -- ============================================================
 
 local function SelectQuest(selectFunc, param)
-    if not pcall(selectFunc, param) then return false end
+    local services = GetServices()
+    local started = services and services.ProfileStart and services.ProfileStart()
+    local success = pcall(selectFunc, param)
+    if services and services.ProfileEnd then services.ProfileEnd("Quest selection", started) end
+    if not success then return false end
     JustQuest._lastProcessingTime = GetTime()
+    if services and services.NoteStep then services.NoteStep() end
     return true
 end
 
@@ -354,13 +388,6 @@ end
 -- Event Handlers
 -- ============================================================
 
-function QuestEngine.OnQuestGreeting()
-    local services = GetServices()
-    if not services then return end
-    
-    QuestEngine.ProcessLegacyQuestGreeting()
-end
-
 function QuestEngine.ProcessLegacyQuestGreeting()
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
@@ -433,55 +460,39 @@ function QuestEngine.ProcessLegacyQuestGreeting()
         return
     end
     
-    -- Priority 1: Process active quests (turn-ins)
-    if numActive > 0 then
-        for i = 1, numActive do
-            local title, isComplete = GetActiveTitle(i)
-            if isComplete then
-                if services.Debug then
-                    services.Debug("Quest", "Legacy turn-in: " .. (title or "Unknown"))
-                end
-                
-                if SelectQuest(SelectActiveQuest, i) then
-                    return  -- Wait for next event
-                end
-            end
-        end
+    local rawActive, rawAvailable = {}, {}
+    for i = 1, numActive do
+        local title, isComplete = GetActiveTitle(i)
+        rawActive[#rawActive + 1] = {
+            questID = GetActiveQuestID and GetActiveQuestID(i),
+            title = title, isComplete = isComplete, index = i,
+        }
     end
-    
-    -- Priority 2: Process available quests (accepts)
-    if numAvailable > 0 then
-        for i = 1, numAvailable do
-            local isTrivial, frequency, isRepeatable, isLegendary, questID = GetAvailableQuestInfo(i)
-            local title = GetAvailableTitle(i)
-            
-            if questID and safetyEngine.ShouldAcceptQuest(questID, frequency) then
-                -- Check if blacklisted
-                if services.IsQuestBlocked(questID) then
-                    if services.Debug then
-                        services.Debug("Quest", "Legacy quest blocked: " .. (title or "Unknown"))
-                    end
-                else
-                    if services.Debug then
-                        services.Debug("Quest", "Legacy accept: " .. (title or "Unknown"))
-                    end
-                    
-                    if SelectQuest(SelectAvailableQuest, i) then
-                        return  -- Wait for next event
-                    end
-                end
-            end
-        end
+    for i = 1, numAvailable do
+        local trivial, frequency, repeatable, legendary, id, important, meta = GetAvailableQuestInfo(i)
+        rawAvailable[#rawAvailable + 1] = {
+            questID = id, title = GetAvailableTitle(i), index = i,
+            isTrivial = trivial, frequency = frequency, repeatable = repeatable,
+            isLegendary = legendary, isImportant = important, isMeta = meta,
+        }
+    end
+    local active, available = QuestEngine.GetActionableQuests(rawActive, rawAvailable, JustQuest._debugMode)
+    for _, quest in ipairs(active) do
+        recentTurnInAttempts[quest.questID] = GetTime()
+        if SelectQuest(SelectActiveQuest, quest.index) then return end
+    end
+    for _, quest in ipairs(available) do
+        if SelectQuest(SelectAvailableQuest, quest.index) then return end
     end
     
     -- No quests to process - reset
     ResetProcessing()
 end
 
--- rawActive / rawAvailable: optional, the lists the dispatch poll already read this tick.
+-- Lists and snapshot are optional and scoped to this synchronous dispatch only.
 -- Returns handled, waiting. waiting = deliberately holding for content still on its way, so
 -- the poll should keep looking every tick rather than file this menu as judged.
-function QuestEngine.OnGossipShow(rawActive, rawAvailable)
+function QuestEngine.OnGossipShow(rawActive, rawAvailable, snapshot)
     local services = GetServices()
     local safetyEngine = GetSafetyEngine()
     
@@ -495,6 +506,9 @@ function QuestEngine.OnGossipShow(rawActive, rawAvailable)
     
     -- Filter once, up front: everything below sees only quests we will actually act on.
     local active, available, pending = QuestEngine.GetActionableQuests(rawActive, rawAvailable, JustQuest._debugMode)
+    if snapshot then
+        snapshot.hasActionableQuests = #active > 0 or #available > 0 or pending
+    end
 
     if #active == 0 and #available == 0 then
         -- Our own accept/turn-in here is still in flight (or the server quietly refused it):
@@ -534,7 +548,7 @@ function QuestEngine.OnGossipShow(rawActive, rawAvailable)
     -- Priority 3: Delegate to gossip
     local gossipEngine = JustQuest.Core.GetModule("GossipEngine")
     if gossipEngine and gossipEngine.OnGossipShow then
-        local gossipHandled = gossipEngine.OnGossipShow(true)
+        local gossipHandled = gossipEngine.OnGossipShow(snapshot)
         
         -- Handled means an option was selected, and SelectOption already queued the
         -- (seeded) re-check for whatever it unlocks. A second, unseeded one here would
@@ -638,20 +652,26 @@ function QuestEngine.OnQuestDetail()
     local questID = GetQuestID and GetQuestID() or 0
 
     if services.Debug then
-        services.Debug("Quest", string.format("QUEST_DETAIL: %s (ID: %d)", questTitle, questID))
+        services.Debug("Quest", string.format("QUEST_DETAIL: %s (ID: %s)", questTitle, tostring(questID)))
     end
 
     -- Validate quest against safety filters (PvP, escort, blacklist, etc.)
     -- Without this, quests that open QUEST_DETAIL directly (e.g. via gossip
     -- quest-type options, items, or proximity triggers) bypass ShouldAcceptQuest.
-    if questID and questID > 0 and safetyEngine then
-        if not safetyEngine.ShouldAcceptQuest(questID) then
-            if services.Debug then
-                services.Debug("Quest", string.format("QUEST_DETAIL blocked by ShouldAcceptQuest: %s (ID: %d)", questTitle, questID))
-            end
-            LeaveForPlayer("quest_detail_declined")
-            return
+    if type(questID) ~= "number" or questID <= 0
+       or not (safetyEngine and safetyEngine.ShouldAcceptQuest) then
+        if services.Debug then
+            services.Debug("Quest", "QUEST_DETAIL cannot be validated without a quest ID and acceptance filter")
         end
+        LeaveForPlayer("quest_detail_validation_unavailable")
+        return
+    end
+    if not safetyEngine.ShouldAcceptQuest(questID) then
+        if services.Debug then
+            services.Debug("Quest", string.format("QUEST_DETAIL blocked by ShouldAcceptQuest: %s (ID: %d)", questTitle, questID))
+        end
+        LeaveForPlayer("quest_detail_declined")
+        return
     end
 
     -- Block if 3+ player choices shown — manual selection required
@@ -709,6 +729,7 @@ function QuestEngine.OnQuestDetail()
     else
         services.SafeCall(AcceptQuest)
     end
+    services.NoteStep()
 
     -- The accept is async — QUEST_ACCEPTED is the real confirmation (it clears the
     -- attempt tracker on success). Don't poll IsOnQuest here: the round-trip hasn't
@@ -739,6 +760,7 @@ function QuestEngine.OnQuestProgress()
 
     -- IsQuestCompletable() checks UI state; C_QuestLog.IsComplete() validates objectives
     local questID = GetQuestID and GetQuestID()
+    if CompletionDeclined(questID) then return end
     local isComplete = false
     
     if questID and C_QuestLog and C_QuestLog.IsComplete then
@@ -752,9 +774,9 @@ function QuestEngine.OnQuestProgress()
     end
     
     if isComplete then
-        -- Guard: required items — halt unless ALL are quest-class items (classID 12).
-        -- Quest items (pelts, vials, stolen plans) are expected consumables. Trade
-        -- materials, crafted items, or uncached items are not safe to auto-consume.
+        -- Quest-class OR explicitly quest-bound items are expected turn-in consumables;
+        -- quest binding is independent of item class. Ordinary materials and gear still
+        -- require manual confirmation, including items merely bound on pickup.
         -- MUST run before the currency prompt below: the popup's Spend path calls
         -- CompleteQuest directly, so an unsafe item has to halt here or it would be
         -- consumed silently after the player only approved the currency.
@@ -771,13 +793,20 @@ function QuestEngine.OnQuestProgress()
                               or (GetQuestItemInfo and select(6, GetQuestItemInfo("required", i)))
                     if item then
                         local classID = select(6, C_Item.GetItemInfoInstant(item))
-                        if classID == nil or classID ~= IC.QUESTITEM then
-                            if services.Debug then
-                                services.Debug("Quest", "Quest requires non-quest item (classID=" .. tostring(classID) .. ") — halting for manual confirmation")
+                        if classID ~= IC.QUESTITEM then
+                            local name, _, _, _, _, _, _, _, _, _, _, _, _, bindType = C_Item.GetItemInfo(item)
+                            if bindType ~= JustQuest.Constants.BIND_TYPES.QUEST then
+                                local reason = name and bindType ~= nil
+                                    and "quest_requires_trade_items" or "quest_requires_uncached_items"
+                                if services.Debug then
+                                    services.Debug("Quest", "Required item needs manual review: " .. tostring(item)
+                                        .. " (classID=" .. tostring(classID) .. ", bindType=" .. tostring(bindType)
+                                        .. ", reason=" .. reason .. ")")
+                                end
+                                if services.OutputHalt then services.OutputHalt(reason) end
+                                if safetyEngine then safetyEngine.EndProcessing(reason) end
+                                return
                             end
-                            if services.OutputHalt then services.OutputHalt("quest_requires_trade_items") end
-                            if safetyEngine then safetyEngine.EndProcessing("quest_requires_trade_items") end
-                            return
                         end
                     else
                         -- No link and no item ID at all: cannot verify — halt to be safe.
@@ -870,6 +899,7 @@ function QuestEngine.OnQuestProgress()
         end
         
         services.SafeCall(CompleteQuest)
+        services.NoteStep()
 
         JustQuest._stats.completeActions = (JustQuest._stats.completeActions or 0) + 1
         JustQuest._lastProcessingTime = GetTime()
@@ -914,6 +944,7 @@ function QuestEngine.OnQuestComplete()
     -- Global debounce would accidentally skip a DIFFERENT quest's QUEST_COMPLETE
     -- if two quests are turned in rapidly (e.g., multi-turnin NPC).
     local questID = GetQuestID and GetQuestID() or 0
+    if CompletionDeclined(questID) then return end
     local now = GetTime()
     -- Only debounce on a real (nonzero) ID: two different turn-ins that both report
     -- questID 0 within the window must not be treated as the same quest.
@@ -957,6 +988,7 @@ function QuestEngine.OnQuestComplete()
         -- but don't rely on it if GetQuestReward silently fails).
         local numChoices = GetNumQuestChoices and GetNumQuestChoices() or 0
         services.SafeCall(GetQuestReward, numChoices == 1 and 1 or nil)
+        services.NoteStep()
         if safetyEngine then safetyEngine.EndProcessing("quest_turned_in") end
     end
 end
@@ -1006,11 +1038,15 @@ function QuestEngine.OnQuestAcceptConfirm(questGiver, questTitle, questID)
     if questLogFull or (StaticPopup_Visible and StaticPopup_Visible("QUEST_ACCEPT_LOG_FULL")) then
         return pass("quest log full")
     end
-    if type(questID) == "number" and questID > 0 then
-        if C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(questID) then return pass("already in log") end
-        if safetyEngine and not safetyEngine.ShouldAcceptQuest(questID) then
-            return pass("blocked or quest type turned off")
-        end
+    if type(questID) ~= "number" or questID <= 0 then
+        return pass("quest ID unavailable")
+    end
+    if C_QuestLog and C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(questID) then
+        return pass("already in log")
+    end
+    if not (safetyEngine and safetyEngine.ShouldAcceptQuest
+            and safetyEngine.ShouldAcceptQuest(questID)) then
+        return pass("blocked or quest type turned off")
     end
 
     services.SafeCall(ConfirmAcceptQuest)
@@ -1164,6 +1200,7 @@ end
 -- say it's there. One press of the Interact key and automation takes over again.
 local FOLLOWUP_WATCH  = 8     -- seconds after the turn-in
 local FOLLOWUP_RADIUS = 20    -- yards between you and the quest's start point
+local FOLLOWUP_CHECK_INTERVAL = 1.5
 -- Only once the dialog has stayed closed this long: a re-show between windows is the client
 -- reopening on its own, and automation is already on it.
 local FOLLOWUP_SETTLE = 1.0
@@ -1224,7 +1261,7 @@ local function FollowUpTick()
             end
         end
     end
-    services.ScheduleOnce("quest_followup_watch", 0.5, FollowUpTick)
+    services.ScheduleOnce("quest_followup_watch", FOLLOWUP_CHECK_INTERVAL, FollowUpTick)
 end
 
 function QuestEngine.WatchForFollowUp()

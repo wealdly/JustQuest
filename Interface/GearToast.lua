@@ -211,7 +211,7 @@ function GearToast.Show(info)
     else
         snd = SOUNDKIT and SOUNDKIT.UI_EPICLOOT_TOAST
     end
-    pcall(PlaySound, snd or 856, "Master")
+    if not info.quiet then pcall(PlaySound, snd or 856, "Master") end
 end
 
 -- Take the toast down without a decision. A prompt waits indefinitely by design, so when

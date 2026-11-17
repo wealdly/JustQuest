@@ -69,6 +69,8 @@ JustQuest.Constants.ITEM_CLASS = {
     CONTAINER     = 1,
     WEAPON        = 2,
     ARMOR         = 4,
+    TRADEGOODS    = 7,
+    RECIPE        = 9,
     QUESTITEM     = 12,
     MISCELLANEOUS = 15,
     BATTLEPET     = 17,
@@ -147,6 +149,17 @@ JustQuest.Constants.TIMING = {
     -- this covers that window — the poll costs three list reads per tick and stops
     -- early the moment the frame closes or the content is handled.
     RE_PUMP_MAX_DELAY = 0.3,
+    -- While a quest/gossip window is open the next content is imminent, so the poll's
+    -- backoff stops here instead: halves the worst-case lag for content that arrives
+    -- without an event of its own. Cost: one fingerprint (three list reads) per tick.
+    RE_PUMP_OPEN_MAX_DELAY = 0.15,
+    -- Normal-mode step pace: an automated step runs no sooner than this after the previous
+    -- one. Server replies vary (~0.05-0.3s) and quest frames used to be answered the instant
+    -- they opened while gossip waited a tick, so windows flashed by at uneven speeds. Measured
+    -- from the PREVIOUS STEP, not from the window opening, so a reply faster than this is
+    -- absorbed entirely and a slower one isn't delayed further. Scaled by the timing
+    -- multiplier; fast mode skips it (see Services.PaceWait).
+    STEP_PACE = 0.25,
     RE_PUMP_TOTAL_TIME = 3.5,
     -- After a turn-in / accept: keep watching the open dialog this long for the next quest
     -- (an NPC that speaks first, a slow re-show), and ride out a frame gap this long between
@@ -246,6 +259,7 @@ JustQuest.Constants.DEFAULTS = {
             -- A legacy "safe plus lockboxes" mode was dropped: opening a lockbox needs a spell
             -- cast, and a spell cast needs a hardware event, so no automation can reach one.
             mode = "safe",
+            openQuestLoot = true, -- only containers supplying unfinished accepted quest objectives
             whitelist = {},
             blacklist = {},
         },
@@ -255,6 +269,7 @@ JustQuest.Constants.DEFAULTS = {
             autoEquip = false,       -- advisor: auto-equip upgrades as you loot (else advise only)
             minUpgradePct = 5,       -- advisor: ignore upgrades smaller than this percent
             weightItemLevel = false, -- expose Item Level as a weightable Pawn stat (opt-in, global)
+            foreverPawnScales = {}, -- WoW Forever: selected Pawn scale per character
             announce = true,         -- on-screen toast + sound when gear is equipped/recommended
             respectEquipmentSets = true, -- don't offer to replace gear belonging to a saved equipment set
             protectProfessionGear = true, -- don't offer to replace an equipped fishing pole / profession tool

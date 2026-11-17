@@ -411,7 +411,7 @@ end
 local CONTINUING_REASONS = {
     whitelisted_option_selected   = true,
     quest_option_selected         = true,
-    service_step_selected         = true,
+    single_option_selected        = true,
     gossip_option_selected        = true,
     quest_accept_action_complete  = true,
     quest_turned_in               = true,

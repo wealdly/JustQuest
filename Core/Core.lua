@@ -102,7 +102,10 @@ local EVENT_DISPATCH = {
     QUEST_PROGRESS = {"QuestEngine", "OnQuestProgress"},
     QUEST_COMPLETE = {"QuestEngine", "OnQuestComplete"},
     QUEST_AUTOCOMPLETE = {"QuestEngine", "OnQuestAutoComplete"},
-    QUEST_GREETING = {"QuestEngine", "OnQuestGreeting"},
+    -- QUEST_GREETING, GOSSIP_SHOW and GOSSIP_OPTIONS_REFRESHED are listed for registration
+    -- only: HandleSpecialEvent turns each into one coalesced content pass (Services
+    -- dispatch -> QuestEngine -> GossipEngine), so no per-event handler is ever called.
+    QUEST_GREETING = "dispatch",
     QUEST_LOG_UPDATE = {"QuestEngine", "OnQuestLogUpdate"},
     QUEST_ACCEPT_CONFIRM = {"QuestEngine", "OnQuestAcceptConfirm"},
     QUEST_ITEM_UPDATE = {"QuestEngine", "OnQuestItemUpdate"},
@@ -111,11 +114,11 @@ local EVENT_DISPATCH = {
     PLAYER_CHOICE_UPDATE = {"QuestEngine", "OnPlayerChoiceUpdate"},
     PLAYER_CHOICE_CLOSE = {"QuestEngine", "OnPlayerChoiceClose"},
     
-    GOSSIP_SHOW = {"QuestEngine", "OnGossipShow"},
+    GOSSIP_SHOW = "dispatch",
     GOSSIP_CONFIRM = {"GossipEngine", "OnGossipConfirm"},
     GOSSIP_CONFIRM_CANCEL = {"GossipEngine", "OnGossipConfirmCancel"},
     GOSSIP_CLOSED = {"GossipEngine", "OnGossipClosed"},
-    GOSSIP_OPTIONS_REFRESHED = {"GossipEngine", "OnGossipOptionsRefreshed"},
+    GOSSIP_OPTIONS_REFRESHED = "dispatch",
     
     QUEST_TURNED_IN = {"Core", "OnQuestTurnedIn"},
     QUEST_ACCEPTED = {"Core", "OnQuestAccepted"},
@@ -184,7 +187,13 @@ local function OnQuestAccepted(questID)
     end
 
     JustQuest._lastProcessingTime = GetTime()
-    JustQuest._lastProgressTime = GetTime()  -- the next quest may still be on its way
+    -- The next quest may still be on its way — but only from a conversation. QUEST_ACCEPTED
+    -- also fires for area/bonus/world quests picked up just by walking in; stamping those
+    -- made the next NPC you talked to hold its gossip (and its empty page) for the
+    -- follow-up window, waiting on a quest that was never coming from them.
+    if services and services.DialogClosedFor and services.DialogClosedFor() < 1.0 then
+        JustQuest._lastProgressTime = GetTime()
+    end
     if services and services.Debug then
         services.Debug("Core", string.format("OnQuestAccepted: updated _lastProcessingTime=%.3f", JustQuest._lastProcessingTime))
     end
@@ -412,7 +421,15 @@ local CORE_METHODS = {
 -- Event Processing
 -- ============================================================
 
-local DIALOG_OPEN_EVENTS = { GOSSIP_SHOW = true, QUEST_GREETING = true, GOSSIP_OPTIONS_REFRESHED = true }
+-- Quest-window events held to the normal-mode step pace, with the panel each one answers.
+-- Their handlers read the open frame (GetQuestID etc.) and take no event arguments.
+local PACED_EVENTS = {
+    QUEST_DETAIL   = "QuestFrameDetailPanel",
+    QUEST_PROGRESS = "QuestFrameProgressPanel",
+    QUEST_COMPLETE = "QuestFrameRewardPanel",
+}
+
+local DIALOG_OPEN_EVENTS ={ GOSSIP_SHOW = true, QUEST_GREETING = true, GOSSIP_OPTIONS_REFRESHED = true }
 
 local function ShouldProcessEvent(event)
     if JustQuest.Constants.BYPASS_SAFETY_EVENTS[event] then
@@ -533,8 +550,27 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         return
     end
-    
+    if type(dispatchInfo) ~= "table" then return end  -- "dispatch": handled above
+
     local moduleName, methodName = dispatchInfo[1], dispatchInfo[2]
+
+    -- Quest windows are answered on the event itself, so without this they acted the instant
+    -- they opened while gossip waited a tick — the uneven rhythm. Hold to the step pace,
+    -- then act only if that same panel is still up (the player may have closed or changed it).
+    local panelName = PACED_EVENTS[event]
+    local services = _coreServices
+    if panelName and services and services.PaceWait then
+        local wait = services.PaceWait()
+        if wait > 0 then
+            services.ScheduleOnce("paced_" .. event, wait, function()
+                local panel = _G[panelName]
+                if panel and not panel:IsShown() then return end
+                DispatchToModule(moduleName, methodName)
+            end)
+            return
+        end
+    end
+
     DispatchToModule(moduleName, methodName, ...)
 end)
 

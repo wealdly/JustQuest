@@ -1,12 +1,12 @@
-## Interface: 120100
+## Interface: 16001
 ## Title: JustQuest
-## Notes: Automates quest acceptance, turn-in, gossip selection, and reward picking
+## Notes: Automates quest acceptance, turn-in, gossip selection, reward picking, and required quest-loot containers
 ## Author: wealdly
 ## Version: 3.5.0
 ## License: GPL-3.0-or-later
 ## IconTexture: Interface/Icons/INV_Misc_Book_09
 ## SavedVariables: JustQuestDB
-## OptionalDeps: Ace3
+## OptionalDeps: Ace3, Questie, QuestieDB
 
 # External Libraries
 Libs\LibStub\LibStub.lua
@@ -26,6 +26,7 @@ Services\GameData.lua
 Services\PawnScoring.lua
 Services\PawnStatInjection.lua
 Services\ClassWeights.lua
+Services\GearScoring.lua
 
 # Database Tables
 Database\BlockedContent.lua

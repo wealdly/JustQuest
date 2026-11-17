@@ -69,6 +69,7 @@ local AUTOMATION_TIMERS = {
     "state_recovery_resume",
     "legacy_api_poll",
     "automation_indicator_show",
+    "paced_QUEST_DETAIL", "paced_QUEST_PROGRESS", "paced_QUEST_COMPLETE",
 }
 
 function Services.CancelAutomationTimers()
@@ -139,6 +140,23 @@ function Services.GetTiming(timingKey, fallback)
     return baseValue * multiplier
 end
 
+-- Step pacing (normal mode). NoteStep marks an automated step the moment it is issued;
+-- PaceWait is how long the next one should still hold off to keep an even rhythm.
+function Services.NoteStep()
+    JustQuest._lastStepTime = GetTime()
+end
+
+function Services.PaceWait()
+    local config = JustQuest.Core.GetModule("Config")
+    if config and config.Get(nil, "fastMode") then return 0 end
+    local last = JustQuest._lastStepTime
+    if not last then return 0 end
+    local multiplier = (config and config.Get("advanced", "timingMultiplier")) or 1.0
+    multiplier = math.max(0.75, math.min(2.0, multiplier))
+    local pace = (JustQuest.Constants.TIMING.STEP_PACE or 0) * multiplier
+    return math.max(0, last + pace - GetTime())
+end
+
 -- ============================================================
 -- Output System - Centralized messaging for consistency
 -- ============================================================
@@ -163,6 +181,19 @@ function Services.Debug(module, msg)
 
     -- Timestamped (seconds, mod 1000) so step-to-step gaps can be read straight off the log.
     print(string.format("|cff00ccffJQ %.2f %s:|r %s", GetTime() % 1000, module or "Core", out))
+end
+
+-- Debug-only phase timings in milliseconds; never reset the client's shared profiler clock.
+function Services.ProfileStart()
+    if _debugEnabled and debugprofilestop then return debugprofilestop() end
+end
+
+function Services.ProfileEnd(phase, started)
+    if not (_debugEnabled and started and debugprofilestop) then return end
+    local elapsed = debugprofilestop() - started
+    if elapsed >= 2 then
+        Services.Debug("Performance", string.format("%s: %.2f ms", phase, elapsed))
+    end
 end
 
 -- Direct answers to something the player did — a slash command, a button. Automation itself
@@ -198,6 +229,7 @@ local HALT_REASONS = {
     ["expensive_quest_requires_payment"] = "Quest turn-in costs gold",
     ["multiple_significant_rewards"]  = "Multiple significant rewards — manual selection required",
     ["reward_items_not_loaded"]       = "Reward items haven't finished loading",
+    ["special_reward_choice"]         = "Special or uncertain reward offered - choose manually",
     ["no_comparable_reward_value"]    = "Rewards can't be compared by value — pick one",
 }
 
@@ -777,22 +809,20 @@ end
 -- after the gossip window has given way to a quest greeting, the greeting counts after a gossip
 -- NPC. Routing on stale data sent a pass down the wrong path, where it "succeeded" at nothing
 -- and ended the poll — and the real next quest was never looked at.
-function Services.HasAnyActionableContent(rawActive, rawAvailable)
+function Services.HasAnyActionableContent(rawActive, rawAvailable, snapshot)
     if GossipFrame and GossipFrame:IsShown() then
         rawActive = rawActive or Services.SafeCall(C_GossipInfo and C_GossipInfo.GetActiveQuests)
         rawAvailable = rawAvailable or Services.SafeCall(C_GossipInfo and C_GossipInfo.GetAvailableQuests)
 
-        if Services.HasActionableQuestContent(rawActive, rawAvailable) then return true, "modern" end
-
-        -- Unfiltered quest check — HasActionableQuestContent may filter all quests out
-        -- (recently accepted, log full, etc.) or data may still be loading.
-        -- Route through QuestEngine anyway for correct priority (quests before gossip).
+        -- Routing only needs to know whether quests exist. QuestEngine filters them once
+        -- before acting, including pending attempts and quests left for the player.
         if (type(rawActive) == "table" and #rawActive > 0) or
            (type(rawAvailable) == "table" and #rawAvailable > 0) then
             return true, "modern"
         end
 
-        local opts = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
+        local opts = snapshot and snapshot.options
+            or Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
         if type(opts) == "table" and #opts > 0 then return true, "gossip" end
         return false, "none"
     end
@@ -817,7 +847,7 @@ local FLAVOR_CLOSE_THROTTLE = 1.0
 -- content at all (busy mid-step, interfering frame, automation gated off) — the poll
 -- below uses it to know its content fingerprint is not a verdict on that content.
 -- rawActive / rawAvailable: this tick's lists, fetched once by the poll and passed down.
-local function DispatchContent(reason, rawActive, rawAvailable)
+local function DispatchContent(reason, rawActive, rawAvailable, snapshot)
     -- Use CanAutomateBase (not CanAutomate) to avoid noisy "interfering frame" messages
     -- during background repumps (e.g. MerchantFrame opening after quest turn-in)
     if not Services.CanAutomateBase() then
@@ -837,7 +867,7 @@ local function DispatchContent(reason, rawActive, rawAvailable)
         return false, false
     end
 
-    local hasContent, contentType = Services.HasAnyActionableContent(rawActive, rawAvailable)
+    local hasContent, contentType = Services.HasAnyActionableContent(rawActive, rawAvailable, snapshot)
     if not hasContent then
         -- Fast mode: a gossip window that's still open with no options and no quests
         -- is pure flavor text. It was hidden on show, so close it instead of leaving
@@ -893,7 +923,7 @@ local function DispatchContent(reason, rawActive, rawAvailable)
 
     -- Check gossip failed cooldown for pure gossip content (anti-loop)
     if contentType == "gossip" and gossipEngine and gossipEngine.IsInFailedCooldown then
-        if gossipEngine.IsInFailedCooldown() then
+        if gossipEngine.IsInFailedCooldown(snapshot) then
             Services.Debug("Services", "Skipping gossip - in failed cooldown")
             return false, false
         end
@@ -923,10 +953,10 @@ local function DispatchContent(reason, rawActive, rawAvailable)
         if questEngine and questEngine.OnGossipShow then
             -- waiting: QuestEngine is holding for a quest still on its way; don't file this
             -- content as judged, or the poll would never look at it again.
-            local handled, waiting = questEngine.OnGossipShow(rawActive, rawAvailable)
+            local handled, waiting = questEngine.OnGossipShow(rawActive, rawAvailable, snapshot)
             return handled and true or false, not waiting
         elseif gossipEngine and gossipEngine.OnGossipShow then
-            return gossipEngine.OnGossipShow(true) and true or false, true
+            return gossipEngine.OnGossipShow(snapshot) and true or false, true
         end
     end
 
@@ -944,8 +974,7 @@ end
 -- because that is exactly the case where the server is still on its way.
 --
 -- A menu left for the player is re-checked too, and that is the case that actually runs
--- to the deadline — so it early-outs on a content fingerprint. New server data always
--- moves one of these three counts; that is the entire reason the poll exists. Without it
+-- to the deadline — so it early-outs on quest and option fingerprints. Without it
 -- every pass re-ran the full quest-list walk and cycled BUSY->IDLE, which is both wasted
 -- allocation and enough state churn to keep re-arming the automation indicator so it
 -- never survived long enough to appear.
@@ -961,18 +990,37 @@ local function QuestListPrint(list)
     return table.concat(parts, ",")
 end
 
--- Returns the print plus the lists it read, so the tick's dispatch reuses them.
+-- Shared by dispatch and failed-menu cooldowns: same-sized menus can change meaning.
+function Services.GossipOptionsFingerprint(options)
+    if type(options) ~= "table" then return "-" end
+    local parts = {}
+    for i, option in ipairs(options) do
+        parts[i] = string.format("%s:%s:%s:%q:%s:%s:%s:%s:%d",
+            tostring(option.gossipOptionID), tostring(option.orderIndex), tostring(option.status),
+            option.name or "", tostring(option.flags), tostring(option.spellID),
+            tostring(option.icon), tostring(option.selectOptionWhenOnlyOption),
+            option.rewards and #option.rewards or 0)
+    end
+    local forced = C_GossipInfo and C_GossipInfo.ForceGossip and C_GossipInfo.ForceGossip()
+    return tostring(forced == true) .. "|" .. table.concat(parts, ";")
+end
+
+-- Returns the print, lists, and synchronous-pass snapshot. Never retain the snapshot for
+-- a timer or action retry: a new pass must observe new content and live safety state.
 local function ContentFingerprint()
     local active    = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetActiveQuests)
     local available = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetAvailableQuests)
     local options   = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
-    return string.format("%s|%s|%d|%d:%d|%s%s",
+    local optionsPrint = Services.GossipOptionsFingerprint(options)
+    return string.format("%s|%s|%s|%d:%d|%s%s",
         QuestListPrint(active), QuestListPrint(available),
-        type(options) == "table" and #options or -1,
+        optionsPrint,
         GetNumActiveQuests and GetNumActiveQuests() or -1,
         GetNumAvailableQuests and GetNumAvailableQuests() or -1,
         (GossipFrame and GossipFrame:IsShown()) and "G" or "",
-        (QuestFrame and QuestFrame:IsShown()) and "Q" or ""), active, available
+        (QuestFrame and QuestFrame:IsShown()) and "Q" or ""), active, available, {
+            options = options or {}, optionsFingerprint = optionsPrint,
+        }
 end
 Services.ContentFingerprint = ContentFingerprint
 
@@ -997,17 +1045,32 @@ local WATCH_REASONS = {
 }
 local pass = nil  -- { due, deadline, gap, delay, reason, lastPrint, closedSince }
 
-local function DispatchTick()
+local DispatchTick
+local function RunDispatchTick()
     local st = pass
     if not st then return end
 
+    -- Hold to the step pace before looking: a pass that acts now would answer a window
+    -- the previous step only just opened. Deadline and gap are untouched — this only
+    -- moves the look later, by at most one pace.
+    local wait = Services.PaceWait()
+    if wait > 0 then
+        st.due = GetTime() + wait
+        Services.ScheduleOnce(DISPATCH_KEY, wait, DispatchTick)
+        return
+    end
+
     -- Unchanged content means the server has sent nothing new since the last look,
     -- so the handler cannot reach a different decision than it just did.
-    local print_, active, available = ContentFingerprint()
+    local started = Services.ProfileStart()
+    local print_, active, available, snapshot = ContentFingerprint()
+    Services.ProfileEnd("Content snapshot", started)
     local examined = false
     if print_ ~= st.lastPrint then
         local handled
-        handled, examined = DispatchContent(st.reason, active, available)
+        started = Services.ProfileStart()
+        handled, examined = DispatchContent(st.reason, active, available, snapshot)
+        Services.ProfileEnd("Content dispatch", started)
         if JustQuest._debugMode then
             Services.Debug("Dispatch", string.format("%s [%s] -> %s", st.reason, print_,
                 handled and "acted" or (examined and "nothing to do" or "gated")))
@@ -1034,11 +1097,19 @@ local function DispatchTick()
     -- mid-step was never looked at again and needed a manual re-click.
     if examined then st.lastPrint = print_ end
 
-    local maxDelay = JustQuest.Constants.TIMING.RE_PUMP_MAX_DELAY or 0.3
+    local TIMING = JustQuest.Constants.TIMING
+    local maxDelay = Services.IsInteractionFrameOpen()
+        and (TIMING.RE_PUMP_OPEN_MAX_DELAY or 0.15) or (TIMING.RE_PUMP_MAX_DELAY or 0.3)
     local growth   = JustQuest.Constants.TIMING.RE_PUMP_GROWTH_FACTOR or 1.4
     st.delay = math.min(st.delay * growth, maxDelay)
     st.due = now + st.delay
     Services.ScheduleOnce(DISPATCH_KEY, st.delay, DispatchTick)
+end
+
+DispatchTick = function()
+    local started = Services.ProfileStart()
+    RunDispatchTick()
+    Services.ProfileEnd("Dispatch tick", started)
 end
 
 -- seedPrint: the content as it stands right now, for a check that should only act once the

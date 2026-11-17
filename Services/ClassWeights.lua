@@ -19,6 +19,7 @@ local ADDON_NAME, JustQuest = ...
 local ClassWeights = {}
 
 local GetConfig = JustQuest.Core.ModuleGetter("Config")
+local GetGameData = JustQuest.Core.ModuleGetter("GameData")
 
 -- GetItemStats keys (the game's own ITEM_MOD_* global names). Short aliases keep the tables
 -- below readable.
@@ -37,6 +38,8 @@ local KEY = {
     ARMOR = "RESISTANCE0_NAME",
     DPS  = "ITEM_MOD_DAMAGE_PER_SECOND_SHORT",
 }
+local KNOWN_STATS = {}
+for _, key in pairs(KEY) do KNOWN_STATS[key] = true end
 
 -- Per-role weights, primary stat = 1.0. Two entries aren't stat keys:
 --   SCHOOL      school-specific spell damage (Forever's fire / frost / shadow / ... damage
@@ -97,42 +100,42 @@ local NO_BASELINE = 100  -- empty slot; the sentinel the advisor and reward pick
 -- Handed Weapon Specialization, Fist Weapon Specialization, Weapon Mastery, Wand Specialization).
 -- Read from the game's own data rather than a race table: a bonus counts when the character KNOWS
 -- the spell (IsPlayerSpell), so racials and the talents actually taken both apply, and nothing
--- here names a race. Folded into a weapon's score as x(1 + (crit% + damage%) / 100) — what the
--- bonus is worth in damage, so it settles near-ties toward the preferred type rather than
--- overriding a clearly better weapon.
+-- here names a race. Applied only to weighted weapon DPS, not to the item's other stats.
+-- Crit and damage percentages are an approximation, not a simulated damage increase.
 -- Regenerate with tools/gen_weapon_specs.py after a Forever patch.
 -- Generated from WoW Forever 1.60.1.70205 DB2 (SpellEquippedItems + SpellEffect + SkillLineAbility):
 -- every racial (skill category 9) and class-talent (7) passive that raises crit (auras 52/290) or
--- damage (aura 79) with specific weapon types. [spellID] = { item-subclass mask, crit %, damage % }
+-- damage (aura 79) with specific weapon types.
+-- [spellID] = { item-subclass mask, crit %, damage %, optional alternate-rank family }
 local WEAPON_SPECS = {
     [6057] = { 524288, 0, 13 },  -- Wand Specialization (Arcane)
     [12163] = { 136546, 0, 1 },  -- Two-Handed Weapon Specialization (Arms)
     [12320] = { 173555, 5, 0 },  -- Cruelty (Fury)
     [12700] = { 131139, 1, 0 },  -- Weaponmaster (Arms)
     [13706] = { 40960, 5, 0 },  -- Hack and Slash (Combat, Combat)
-    [13707] = { 8192, 1, 0 },  -- Fist Weapon Specialization (Combat)
-    [13966] = { 8192, 2, 0 },  -- Fist Weapon Specialization (Combat)
-    [13967] = { 8192, 3, 0 },  -- Fist Weapon Specialization (Combat)
-    [13968] = { 8192, 4, 0 },  -- Fist Weapon Specialization (Combat)
-    [13969] = { 8192, 5, 0 },  -- Fist Weapon Specialization (Combat)
+    [13707] = { 8192, 1, 0, 13707 },  -- Fist Weapon Specialization (Combat)
+    [13966] = { 8192, 2, 0, 13707 },  -- Fist Weapon Specialization (Combat)
+    [13967] = { 8192, 3, 0, 13707 },  -- Fist Weapon Specialization (Combat)
+    [13968] = { 8192, 4, 0, 13707 },  -- Fist Weapon Specialization (Combat)
+    [13969] = { 8192, 5, 0, 13707 },  -- Fist Weapon Specialization (Combat)
     [14524] = { 524288, 0, 25 },  -- Wand Specialization (Discipline)
     [16255] = { 173555, 1, 0 },  -- Thundering Strikes (Enhancement)
-    [19381] = { 173555, 0, 1 },  -- Melee Specialization (Survival)
-    [19382] = { 173555, 0, 2 },  -- Melee Specialization (Survival)
-    [19383] = { 173555, 0, 3 },  -- Melee Specialization (Survival)
-    [19384] = { 173555, 0, 4 },  -- Melee Specialization (Survival)
-    [19385] = { 173555, 0, 5 },  -- Melee Specialization (Survival)
+    [19381] = { 173555, 0, 1, 19381 },  -- Melee Specialization (Survival)
+    [19382] = { 173555, 0, 2, 19381 },  -- Melee Specialization (Survival)
+    [19383] = { 173555, 0, 3, 19381 },  -- Melee Specialization (Survival)
+    [19384] = { 173555, 0, 4, 19381 },  -- Melee Specialization (Survival)
+    [19385] = { 173555, 0, 5, 19381 },  -- Melee Specialization (Survival)
     [19507] = { 262156, 0, 5 },  -- Ranged Weapon Specialization (Marksmanship)
     [20111] = { 136546, 0, 2 },  -- Two-Handed Weapon Specialization (Retribution)
     [20117] = { 173555, 5, 0 },  -- Conviction (Retribution)
     [20196] = { 43153, 0, 2 },  -- One-Handed Weapon Specialization (Protection)
     [20574] = { 3, 1, 0 },  -- Axe Specialization (Orc Racial)
     [20597] = { 384, 2, 0 },  -- Sword Specialization (Racial - Human)
-    [29082] = { 44083, 0, 2 },  -- Weapon Mastery (Enhancement)
-    [29084] = { 44083, 0, 4 },  -- Weapon Mastery (Enhancement)
-    [29086] = { 44083, 0, 6 },  -- Weapon Mastery (Enhancement)
-    [29087] = { 44083, 0, 8 },  -- Weapon Mastery (Enhancement)
-    [29088] = { 44083, 0, 10 },  -- Weapon Mastery (Enhancement)
+    [29082] = { 44083, 0, 2, 29082 },  -- Weapon Mastery (Enhancement)
+    [29084] = { 44083, 0, 4, 29082 },  -- Weapon Mastery (Enhancement)
+    [29086] = { 44083, 0, 6, 29082 },  -- Weapon Mastery (Enhancement)
+    [29087] = { 44083, 0, 8, 29082 },  -- Weapon Mastery (Enhancement)
+    [29088] = { 44083, 0, 10, 29082 },  -- Weapon Mastery (Enhancement)
     [415320] = { 173555, 0, 8 },  -- Flanking Strike (Survival)
     [1259719] = { 48, 1, 0 },  -- Mace Specialization (Dwarven Racial)
 }
@@ -144,14 +147,11 @@ local function WeaponBonusPct(subclassID)
     if not subclassID then return 0 end
     local cached = weaponBonusCache[subclassID]
     if cached then return cached end
-    -- Ranks of one talent are separate spells (Fist Weapon Specialization 1..5%) that share a
-    -- mask and an effect; whether lower ranks still read as known is client behaviour, so take
-    -- the BEST known spell per (mask, effect) group instead of adding ranks up. Different
-    -- talents (and a racial) still stack.
+    -- Masks identify affected weapons, not stacking families. Distinct passives can share one.
     local best, bitValue = {}, 2 ^ subclassID
     for spellID, spec in pairs(WEAPON_SPECS) do
         if math.floor(spec[1] / bitValue) % 2 == 1 and IsPlayerSpell and IsPlayerSpell(spellID) then
-            local group = spec[1] .. (spec[2] > 0 and "c" or "") .. (spec[3] > 0 and "d" or "")
+            local group = spec[4] or spellID
             best[group] = math.max(best[group] or 0, spec[2] + spec[3])
         end
     end
@@ -203,8 +203,9 @@ end
 local weightCache, scoreCache = nil, {}
 
 -- Drop everything derived from the character: role change, a spell learned, talents changed.
-function ClassWeights.Invalidate()
+function ClassWeights.Invalidate(reason)
     weightCache, scoreCache, weaponBonusCache = nil, {}, {}
+    if EventRegistry then EventRegistry:TriggerEvent("JustQuest.GearScoringChanged", reason) end
 end
 
 function ClassWeights.SetRole(role)
@@ -218,9 +219,7 @@ function ClassWeights.SetRole(role)
     for k, v in pairs(config.Get("gearSwap", "roles") or {}) do roles[k] = v end
     roles[CharKey()] = role
     config.Set("gearSwap", "roles", roles)
-    ClassWeights.Invalidate()
-    local advisor = JustQuest.Core.GetModule("GearAdvisor")
-    if advisor and advisor.RescanNow then advisor.RescanNow() end
+    ClassWeights.Invalidate("role")
     return true
 end
 
@@ -274,58 +273,32 @@ local function WeightFor(w, key, inRangedSlot)
     return 0, "unweighted"
 end
 
--- The item's stats, with its armour folded in. nil only when the item isn't cached yet.
--- Two traps here, both of which left stat-less armour (a 29-armour pair of bracers against a
--- 4-armour pair) unscored and never offered:
---   * GetItemStats returns NOTHING for an item with no stats ("MayReturnNothing") — that is
---     "no stats", not "not loaded", so loadedness is asked of GetItemInfo instead;
---   * base armour isn't a stat at all on the modern client, so it's read off the tooltip.
-local function Stats(link)
-    if not C_Item.GetItemInfo(link) then return nil end  -- genuinely not cached yet
-    local ok, stats = pcall(C_Item.GetItemStats, link)
-    local out = {}
-    if ok and type(stats) == "table" then
-        for k, v in pairs(stats) do out[k] = v end
-    end
-    if not out[KEY.ARMOR] then
-        local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(link)
-        if classID == JustQuest.Constants.ITEM_CLASS.ARMOR then
-            local gameData = JustQuest.Core.GetModule("GameData")
-            local armor = gameData and gameData.ItemArmor and gameData.ItemArmor(link)
-            if armor == nil then return nil end  -- tooltip not ready: no verdict, not a wrong one
-            if armor > 0 then out[KEY.ARMOR] = armor end
-        end
-    end
-    return out
-end
-
--- Score of an item for the current class + role. slot = the inventory slot it would occupy
--- (decides whether its weapon DPS counts as ranged). nil when the item isn't cached yet.
+-- Score for the current class/role and destination slot. nil for missing or unmodeled stats.
 function ClassWeights.Score(link, slot)
-    if not link then return nil end
+    if not link or not CLASS[PlayerClass()] then return nil end
     local w = Weights()
     local cacheKey = link .. "|" .. tostring(slot) .. "|" .. w.role
     if scoreCache[cacheKey] then return scoreCache[cacheKey] end
 
-    local stats = Stats(link)
+    local stats = GetGameData().ItemStats(link)
     if not stats then return nil end
     local inRangedSlot = slot == JustQuest.Constants.RANGED_SLOT and JustQuest.Constants.IS_FOREVER
-    local total = 0
+    local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(link)
+    if classID == JustQuest.Constants.ITEM_CLASS.WEAPON
+       and (WeightFor(w, KEY.DPS, inRangedSlot)) > 0 and not stats[KEY.DPS] then
+        return nil
+    end
+    local total, weaponValue = 0, 0
     for key, value in pairs(stats) do
-        if type(value) == "number" then
-            total = total + value * (WeightFor(w, key, inRangedSlot))
-        end
+        if value ~= 0 and not KNOWN_STATS[key] and not SchoolOf(key) then return nil end
+        local contribution = value * (WeightFor(w, key, inRangedSlot))
+        total = total + contribution
+        if key == KEY.DPS then weaponValue = contribution end
     end
     -- Racial / talent weapon-type bonus (see WEAPON_SPECS).
-    local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(link)
     if classID == JustQuest.Constants.ITEM_CLASS.WEAPON then
-        total = total * (1 + WeaponBonusPct(subclassID) / 100)
+        total = total + weaponValue * WeaponBonusPct(subclassID) / 100
     end
-    -- Tie-break only: gear with no weighted stats (white items) still ranks by its required
-    -- level, which tracks an item's budget closely in vanilla-style itemization.
-    local reqLevel = select(5, C_Item.GetItemInfo(link)) or 0
-    total = total + reqLevel * 0.001
-
     scoreCache[cacheKey] = total
     return total
 end
@@ -338,15 +311,13 @@ function ClassWeights.CompareToEquipped(link, slots, displaced)
     local new = ClassWeights.Score(link, slots[1])
     if not new then return nil end
 
-    local worstLink, worst
+    local worstLink, worst, worstSlot
     for _, slot in ipairs(slots) do
         local equipped = GetInventoryItemLink("player", slot)
-        if not equipped then
-            return { isUpgrade = true, pawnPercentUpgrade = NO_BASELINE, byClassStats = true }
-        end
-        local score = ClassWeights.Score(equipped, slot)
+        local score = 0
+        if equipped then score = ClassWeights.Score(equipped, slot) end
         if not score then return nil end
-        if not worst or score < worst then worstLink, worst = equipped, score end
+        if not worst or score < worst then worstLink, worst, worstSlot = equipped, score, slot end
     end
     if displaced then
         local extra = ClassWeights.Score(displaced, 17)
@@ -354,14 +325,14 @@ function ClassWeights.CompareToEquipped(link, slots, displaced)
         worst = worst + extra
     end
 
-    if new <= worst then
-        return { isUpgrade = false, pawnPercentUpgrade = 0, existingItemLink = worstLink, byClassStats = true }
-    end
     return {
-        isUpgrade          = true,
-        pawnPercentUpgrade = worst > 0 and (new - worst) / worst or NO_BASELINE,
+        isUpgrade          = new > worst,
+        pawnPercentUpgrade = new > worst and (worst > 0 and (new - worst) / worst or NO_BASELINE) or 0,
         existingItemLink   = worstLink,
         byClassStats       = true,
+        destinationSlot    = worstSlot,
+        candidateScore     = new,
+        baselineScore      = worst,
     }
 end
 
@@ -378,7 +349,7 @@ function ClassWeights.DumpEquipped()
         ClassWeights.IsActive() and "" or "  (retail: Pawn / item level score gear, not these weights)"))
     for slot = (INVSLOT_FIRST_EQUIPPED or 1), (INVSLOT_LAST_EQUIPPED or 19) do
         local link = GetInventoryItemLink("player", slot)
-        local stats = link and Stats(link)
+        local stats = link and GetGameData().ItemStats(link)
         if stats then
             local inRanged = slot == JustQuest.Constants.RANGED_SLOT and JustQuest.Constants.IS_FOREVER
             local parts = {}
@@ -397,6 +368,16 @@ function ClassWeights.DumpEquipped()
     end
 end
 
-JustQuest.Core.RegisterModule("ClassWeights", ClassWeights, {"Config"})
+if JustQuest.Constants.IS_FOREVER then
+    local frame = CreateFrame("Frame")
+    frame:RegisterEvent("PLAYER_LEVEL_UP")
+    frame:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE")
+    for _, event in ipairs({ "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE" }) do
+        pcall(frame.RegisterEvent, frame, event)
+    end
+    frame:SetScript("OnEvent", function(_, event) ClassWeights.Invalidate(event) end)
+end
+
+JustQuest.Core.RegisterModule("ClassWeights", ClassWeights, {"Config", "GameData"})
 
 return ClassWeights
