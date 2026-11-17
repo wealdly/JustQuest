@@ -2,6 +2,9 @@
 
 local ADDON_NAME, JustQuest = ...
 
+-- C_Item first: the bare item globals are compatibility shims, not guaranteed on every client.
+local GetItemInfo  = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+
 local RewardEngine = {}
 
 -- Memoized module accessors
@@ -10,14 +13,18 @@ local GetConfig       = JustQuest.Core.ModuleGetter("Config")
 local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
 local GetGameData     = JustQuest.Core.ModuleGetter("GameData")
 local GetPawnScoring  = JustQuest.Core.ModuleGetter("PawnScoring")
+local GetClassWeights = JustQuest.Core.ModuleGetter("ClassWeights")
 
 -- ============================================================
 -- Reward Processing State
 -- ============================================================
 
 local processingReward = false
-local rewardRetryCount = 0
-local MAX_REWARD_RETRIES = 4
+-- Waiting on reward item data is bounded by TIME, not attempts: QUEST_ITEM_UPDATE re-checks
+-- the moment data lands (often several times per panel), and counting those as retries spent
+-- the budget in a burst and halted a reward that was about to be ready.
+local rewardWaitStart = nil
+local REWARD_WAIT_MAX = 1.0
 local REWARD_RETRY_DELAY = 0.25
 
 -- ============================================================
@@ -70,7 +77,10 @@ end
 -- Core Reward Selection
 -- ============================================================
 
-function RewardEngine.ProcessQuestReward()
+-- fresh = a new reward panel (QUEST_COMPLETE), which starts a new data wait; retries and
+-- data-arrival re-checks continue the current one.
+function RewardEngine.ProcessQuestReward(fresh)
+    if fresh then rewardWaitStart = nil end
     if processingReward then return end
     processingReward = true
     JustQuest._lastProcessingTime = GetTime()
@@ -104,37 +114,46 @@ function RewardEngine.ProcessQuestReward()
     local allCached, loadedCount = AreRewardItemsCached(numChoices)
     if not allCached then
         RequestRewardItemData(numChoices)
-        rewardRetryCount = rewardRetryCount + 1
-        
-        if rewardRetryCount <= MAX_REWARD_RETRIES then
+        rewardWaitStart = rewardWaitStart or GetTime()
+        local waited = GetTime() - rewardWaitStart
+
+        if waited < REWARD_WAIT_MAX then
             if services.Debug then
                 services.Debug("Rewards", string.format(
-                    "Item data not ready (%d/%d cached, attempt %d/%d) - retrying in %.2fs",
-                    loadedCount, numChoices, rewardRetryCount, MAX_REWARD_RETRIES, REWARD_RETRY_DELAY))
+                    "Item data not ready (%d/%d cached, %.2fs waited) - re-checking on arrival or in %.2fs",
+                    loadedCount, numChoices, waited, REWARD_RETRY_DELAY))
             end
             processingReward = false  -- Allow re-entry on retry/QUEST_ITEM_UPDATE
             if services.ScheduleOnce then
-                services.CancelScheduled("reward_data_retry")
                 services.ScheduleOnce("reward_data_retry", REWARD_RETRY_DELAY, function()
+                    -- The panel closed while we waited (picked by hand, walked away): nothing
+                    -- left to choose, so release the chain instead of choosing blind.
+                    if not (QuestFrameRewardPanel and QuestFrameRewardPanel:IsShown()) then
+                        rewardWaitStart = nil
+                        local s = GetSafetyEngine()
+                        if s then s.EndProcessing("reward_panel_closed") end
+                        return
+                    end
                     RewardEngine.ProcessQuestReward()
                 end)
             end
             return
         end
-        
-        -- Max retries exhausted and item data still incomplete. Auto-selecting now
+
+        -- Waited long enough and item data still incomplete. Auto-selecting now
         -- would read nil quality/value for the uncached choices and can silently pick
         -- the wrong reward — so surface it for manual selection instead of guessing.
-        rewardRetryCount = 0
+        rewardWaitStart = nil
         if services.Debug then
             services.Debug("Rewards", string.format(
-                "Item data retry exhausted (%d/%d cached) - halting for manual selection",
-                loadedCount, numChoices))
+                "Item data still missing after %.2fs (%d/%d cached) - halting for manual selection",
+                waited, loadedCount, numChoices))
         end
         RewardEngine.HaltForManualSelection("reward_items_not_loaded")
         return
     end
-    rewardRetryCount = 0  -- Reset for next quest
+    rewardWaitStart = nil  -- Reset for next quest
+    if services.CancelScheduled then services.CancelScheduled("reward_data_retry") end
     
     if config and config.Get("quest", "autoReward") then
         if config.Get("quest", "simpleRewardMode") then
@@ -397,6 +416,11 @@ function RewardEngine.CompareWithEquipped(rewardInfo)
 
     local rewardLevel = rewardInfo.itemLevel or 0
 
+    -- A profession tool isn't a weapon upgrade however much damage it lists.
+    if gameData.IsProfessionTool and gameData.IsProfessionTool(rewardInfo.itemLink) then
+        return { isUpgrade = false, reason = "profession_tool" }
+    end
+
     -- Pawn: spec-aware stat-weight scoring (falls back to ilvl when Pawn is absent,
     -- item not yet cached, or no relevant scales are configured for the active spec).
     if rewardInfo.itemLink then
@@ -406,6 +430,21 @@ function RewardEngine.CompareWithEquipped(rewardInfo)
                 isUpgrade          = pawnResult.isUpgrade,
                 reason             = pawnResult.isUpgrade and "pawn_upgrade" or "pawn_not_upgrade",
                 pawnPercentUpgrade = pawnResult.pawnPercentUpgrade,
+                rewardLevel        = rewardLevel,
+            }
+        end
+    end
+
+    -- Forever: item levels don't mean anything there, so the class + role weights decide, the
+    -- same scorer the gear advisor uses.
+    local cw = GetClassWeights()
+    if cw and cw.IsActive() and rewardInfo.itemLink then
+        local result = cw.CompareToEquipped(rewardInfo.itemLink, gameData.ComparableSlots(rewardInfo.equipSlot))
+        if result then
+            return {
+                isUpgrade          = result.isUpgrade,
+                reason             = result.isUpgrade and "class_stats_upgrade" or "class_stats_not_upgrade",
+                pawnPercentUpgrade = result.isUpgrade and result.pawnPercentUpgrade or nil,
                 rewardLevel        = rewardLevel,
             }
         end
@@ -642,7 +681,7 @@ end
 
 function RewardEngine.LogRewardAnalysis(choices)
     local services = GetServices()
-    if not services then return end
+    if not (services and JustQuest._debugMode) then return end  -- all output is Debug
     
     services.Debug("Rewards", "=== Reward Analysis ===")
     for i, choice in ipairs(choices) do
@@ -703,9 +742,14 @@ end
 -- Initialization
 -- ============================================================
 
+-- True while a reward pick is waiting on item data (QuestEngine re-checks on arrival).
+function RewardEngine.IsWaitingForItemData()
+    return rewardWaitStart ~= nil
+end
+
 function RewardEngine.ResetProcessingFlag()
     processingReward = false
-    rewardRetryCount = 0
+    rewardWaitStart = nil
     local services = GetServices()
     if services and services.CancelScheduled then
         services.CancelScheduled("reward_data_retry")

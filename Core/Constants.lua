@@ -3,6 +3,12 @@
 local ADDON_NAME, JustQuest = ...
 JustQuest.Constants = {}
 
+-- WoW Forever runs the modern client with retail's API surface — its API is a superset of
+-- retail's, so an API existing proves nothing about the content behind it (C_DelvesUI is
+-- there; delves are not). Content that isn't in that game has to be gated on the flavor.
+-- WOW_PROJECT_CAMELOT is only defined by that client, so this is false everywhere else.
+JustQuest.Constants.IS_FOREVER = WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT
+
 -- ============================================================
 -- Game Constants
 -- ============================================================
@@ -12,6 +18,13 @@ JustQuest.Constants.QUEST_TAGS = {
     PVP_WORLD_TYPE = 3, -- Enum.QuestTagType.PvP: PVP world quest type (worldQuestType field)
     HEROIC = 85,        -- Enum.QuestTag.Heroic: formerly misnamed ESCORT; 85 is Heroic, not Escort
 }
+
+-- Where a bow, gun, crossbow or wand is worn. Retail removed the ranged slot (MoP): a ranged
+-- weapon is a main-hand weapon there, and slot 18 is always empty — so comparing against it read
+-- every ranged reward as filling an empty slot. Forever keeps vanilla's ranged slot (18), which
+-- also takes thrown weapons and relics (librams, idols, totems).
+local RANGED_SLOT = JustQuest.Constants.IS_FOREVER and 18 or 16
+JustQuest.Constants.RANGED_SLOT = RANGED_SLOT
 
 JustQuest.Constants.EQUIPMENT_SLOTS = {
     INVTYPE_HEAD = 1, 
@@ -32,9 +45,14 @@ JustQuest.Constants.EQUIPMENT_SLOTS = {
     INVTYPE_WEAPONMAINHAND = 16,
     INVTYPE_WEAPONOFFHAND = 17, 
     INVTYPE_SHIELD = 17, 
-    INVTYPE_HOLDABLE = 17, 
-    INVTYPE_RANGED = 18,
+    INVTYPE_HOLDABLE = 17,
+    INVTYPE_RANGED = RANGED_SLOT,
+    INVTYPE_RANGEDRIGHT = RANGED_SLOT,  -- guns, crossbows, wands
 }
+if JustQuest.Constants.IS_FOREVER then
+    JustQuest.Constants.EQUIPMENT_SLOTS.INVTYPE_THROWN = RANGED_SLOT
+    JustQuest.Constants.EQUIPMENT_SLOTS.INVTYPE_RELIC  = RANGED_SLOT
+end
 
 -- GetItemInfo return value 14
 JustQuest.Constants.BIND_TYPES = {
@@ -60,6 +78,7 @@ JustQuest.Constants.ITEM_CLASS = {
 -- Weapon subclasses worth singling out. A fishing pole is a main-hand weapon as far as the
 -- equip location is concerned, so nothing else distinguishes it from gear.
 JustQuest.Constants.WEAPON_SUBCLASS = {
+    GENERIC      = 14,  -- "Miscellaneous": Mining Pick, Skinning Knife, Blacksmith Hammer, Arclight Spanner
     FISHING_POLE = 20,
 }
 
@@ -94,7 +113,7 @@ JustQuest.Constants.TIMING = {
     -- round-trip left to wait for — this only has to clear the same-frame event storm
     -- and let coalescing settle. The post-action pumps below are a different problem and
     -- keep their longer delay. Anything still not ready is covered by the backoff poll
-    -- in ScheduleDispatch, which retries to RE_PUMP_TOTAL_TIME.
+    -- in Services (DispatchTick), which retries to RE_PUMP_TOTAL_TIME.
     GOSSIP_EVENT_DISPATCH = 0.05,
 
     -- Step delays (scaled by timing multiplier)
@@ -129,6 +148,11 @@ JustQuest.Constants.TIMING = {
     -- early the moment the frame closes or the content is handled.
     RE_PUMP_MAX_DELAY = 0.3,
     RE_PUMP_TOTAL_TIME = 3.5,
+    -- After a turn-in / accept: keep watching the open dialog this long for the next quest
+    -- (an NPC that speaks first, a slow re-show), and ride out a frame gap this long between
+    -- the quest window closing and the NPC's next menu. Cheap: unchanged content is skipped.
+    RE_PUMP_WATCH_TIME = 15,
+    RE_PUMP_WATCH_GAP = 2.0,
     RE_PUMP_GROWTH_FACTOR = 1.4,
 }
 
@@ -169,6 +193,9 @@ JustQuest.Constants.DEFAULTS = {
             currencyQuestWhitelist = {},  -- quests allowed to auto-spend currencies
             acceptAccountCompleted = true,
             acceptQuestItems = true,
+            startQuestItems = true,     -- use bound "This Item Begins a Quest" items in your bags
+            acceptQuestChoices = true,  -- answer one-option story choices that only grant a quest
+            followUpCue = true,         -- hint when a follow-up appears after the dialog closed
             blockedQuests = {},
         },
         
@@ -232,6 +259,7 @@ JustQuest.Constants.DEFAULTS = {
             respectEquipmentSets = true, -- don't offer to replace gear belonging to a saved equipment set
             protectProfessionGear = true, -- don't offer to replace an equipped fishing pole / profession tool
             ignoreItems = {},        -- persistent "never recommend" list (itemID -> name)
+            roles = {},              -- WoW Forever: "Name-Realm" -> gear role (see ClassWeights)
         },
 
         delve = {
@@ -373,6 +401,9 @@ JustQuest.Constants.BYPASS_SAFETY_EVENTS = {
 	[JustQuest.Constants.EVENTS.GOSSIP_CLOSED] = true,
 	[JustQuest.Constants.EVENTS.GOSSIP_CONFIRM_CANCEL] = true,
 	[JustQuest.Constants.EVENTS.PLAYER_CHOICE_CLOSE] = true,
+	-- A party member's shared escort quest: no NPC frame is open and the game's own
+	-- confirm popup is up, so the standard gate always refused it. Self-gates.
+	[JustQuest.Constants.EVENTS.QUEST_ACCEPT_CONFIRM] = true,
 	["PLAYER_ENTERING_WORLD"] = true,
 	-- Instant state management — must always fire
 	[JustQuest.Constants.EVENTS.MODIFIER_STATE_CHANGED] = true,

@@ -17,6 +17,7 @@ ignore:
     - Debug
     - tools
     - AGENTS.md
+    - CLAUDE.md
     - CONTRIBUTING.md
     - build.ps1
     - release.ps1

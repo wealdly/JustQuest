@@ -174,17 +174,17 @@ local function OnQuestAccepted(questID)
         services.NoteAutomation("accepted")
     end
 
-    if safety and not safety.IsBusy() then
-        if QuestFrame and QuestFrame:IsShown() then
-            if services and services.SafeCall then
-                services.SafeCall(CloseQuest)
-            else
-                pcall(CloseQuest)
-            end
-        end
+    -- Close the quest frame only if it is showing THIS quest, and only when automating.
+    -- QUEST_ACCEPTED also fires for quests picked up elsewhere (area/bonus objectives,
+    -- world quests on entering their zone); closing on any of those shut whatever quest
+    -- window happened to be open — including one the player was reading.
+    if QuestFrame and QuestFrame:IsShown() and GetQuestID and GetQuestID() == questID
+       and services and services.ShouldAutomate() then
+        services.SafeCall(CloseQuest)
     end
 
     JustQuest._lastProcessingTime = GetTime()
+    JustQuest._lastProgressTime = GetTime()  -- the next quest may still be on its way
     if services and services.Debug then
         services.Debug("Core", string.format("OnQuestAccepted: updated _lastProcessingTime=%.3f", JustQuest._lastProcessingTime))
     end
@@ -199,6 +199,7 @@ local function OnQuestAccepted(questID)
 end
 
 local function OnQuestTurnedIn(questID)
+    JustQuest._lastProgressTime = GetTime()  -- the follow-up may still be on its way
     local questEngine = JustQuest.Core.GetModule("QuestEngine")
     if questEngine and questEngine.OnQuestTurnedInSuccess then
         questEngine.OnQuestTurnedInSuccess(questID)
@@ -329,7 +330,11 @@ local function OnTeleportation()
 end
 
 local function OnModifierStateChanged(_, down)
-    if down == 1 then
+    if down == 0 then
+        -- Feeds the "held at the click" grace for a dialog still on its way from the server.
+        local services = JustQuest.Core.GetModule("Services")
+        if services and services.NoteModifierReleased then services.NoteModifierReleased() end
+    elseif down == 1 then
         local safety = JustQuest.Core.GetModule("SafetyEngine")
         local services = JustQuest.Core.GetModule("Services")
         
@@ -407,6 +412,8 @@ local CORE_METHODS = {
 -- Event Processing
 -- ============================================================
 
+local DIALOG_OPEN_EVENTS = { GOSSIP_SHOW = true, QUEST_GREETING = true, GOSSIP_OPTIONS_REFRESHED = true }
+
 local function ShouldProcessEvent(event)
     if JustQuest.Constants.BYPASS_SAFETY_EVENTS[event] then
         return true
@@ -434,6 +441,13 @@ local function ShouldProcessEvent(event)
     if UnitIsDeadOrGhost("player") then return false end
     if services.InSpecialControlState and services.InSpecialControlState() then return false end
     if not config.Get("quest", "enabled") or not config.Get("gossip", "enabled") then return false end
+
+    -- The server (re-)opening a dialog is never dropped here for a TRANSIENT reason (a popup
+    -- up, a vendor frame still closing, the frame not flagged shown yet). These only schedule
+    -- a content pass, and that pass re-checks every gate on each tick until its deadline — so
+    -- a blocker that clears a moment later no longer costs the next quest in a chain. Dropping
+    -- the re-show that follows a turn-in was a silent "needs a second click".
+    if DIALOG_OPEN_EVENTS[event] then return true end
 
     -- Single-pass frame check (not duplicated via CanAutomate)
     if not services.IsAutomationContextAllowed() then return false end
@@ -562,9 +576,13 @@ function JustQuest.Core.SetupEvents()
         -- are meant to survive a teardown. Core.Initialize is one-shot, so without this
         -- a disable/enable cycle left the session with no stuck-state recovery and no
         -- fast-mode un-hide for the rest of the session. ScheduleRepeating replaces on
-        -- the same key, so re-initializing is idempotent.
-        local safety = JustQuest.Core.GetModule("SafetyEngine")
-        if safety and safety.Initialize then pcall(safety.Initialize) end
+        -- the same key, so re-initializing is idempotent. Quest (log-full listener) and
+        -- Container (bag events + periodic scan) tear down their own listeners in OnDisable,
+        -- so they need the same re-arm or auto-open stays dead after a toggle.
+        for _, name in ipairs({ "SafetyEngine", "QuestEngine", "ContainerEngine" }) do
+            local module = JustQuest.Core.GetModule(name)
+            if module and module.Initialize then pcall(module.Initialize) end
+        end
     else
         JustQuest.Core.UnregisterEvents()
     end

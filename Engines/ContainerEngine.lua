@@ -10,6 +10,7 @@ local ContainerEngine = {}
 local GetSafetyEngine = JustQuest.Core.ModuleGetter("SafetyEngine")
 local GetServices     = JustQuest.Core.ModuleGetter("Services")
 local GetConfig       = JustQuest.Core.ModuleGetter("Config")
+local GetGameData     = JustQuest.Core.ModuleGetter("GameData")
 
 local lastOpenTime = 0
 local isProcessing = false
@@ -79,13 +80,24 @@ end
 -- from; a generated item list used to sit here for that and was unreachable dead weight (2,275
 -- lines) built from the very same flag it was backing up.
 --
--- There is deliberately no lockbox test here, because there is no runtime signal for one.
 -- info.isLocked is NOT "this is a lockbox" — the game uses it only to grey out the icon and
 -- block pickup/stack-split while an item is transiently in use, and a lockbox sitting in your
--- bags reports false. A locked box does report hasLoot, so it reaches UseContainerItem and the
--- server simply refuses. Confirming the open (ResolvePending) is what keeps that from counting
--- as an open and bounds the retries; reading isLocked as "lockbox" is what made it count.
-local function ShouldOpen(info)
+-- bags reports false. The lock shows up in exactly one place: the bag item's own tooltip carries
+-- a LOCKED line (localized, and gone once a rogue picks it), which is the game's own verdict and
+-- needs no item DB. Without this test a locked box reports hasLoot like any other container, so
+-- every scan sends it to the server and the server answers "It's locked!" in the player's face.
+local function IsLocked(bagID, slotID)
+    local gameData = GetGameData()
+    local lines = gameData and gameData.BagTooltipLines and gameData.BagTooltipLines(bagID, slotID)
+    if not lines then return false end
+
+    for _, line in ipairs(lines) do
+        if line.leftText == (LOCKED or "Locked") then return true end
+    end
+    return false
+end
+
+local function ShouldOpen(bagID, slotID, info)
     local itemID = info.itemID
     -- User whitelist forces open — covers loot bags that open via an on-use spell (no flag).
     if configCache.whitelist[itemID] then
@@ -102,7 +114,9 @@ local function ShouldOpen(info)
     local classID = select(6, C_Item.GetItemInfoInstant(itemID))
     if classID == JustQuest.Constants.ITEM_CLASS.QUESTITEM then return false end
 
-    return info.hasLoot  -- openable container
+    if not info.hasLoot then return false end  -- not an openable container
+
+    return not IsLocked(bagID, slotID)
 end
 
 local function IsDangerousContainer(itemID)
@@ -303,7 +317,7 @@ local function ProcessContainerItem(bagID, slotID, info, currentTime)
 
     local itemID = info.itemID
     if IsDangerousContainer(itemID) then return false end  -- user blacklist
-    if not ShouldOpen(info) then return false end
+    if not ShouldOpen(bagID, slotID, info) then return false end
 
     local containerKey = GetContainerKey(bagID, slotID, itemID)
 
@@ -437,20 +451,78 @@ function ContainerEngine.OpenBagContainers()
 end
 
 -- ============================================================
+-- Quest-starting items ("This Item Begins a Quest")
+-- ============================================================
+-- Its own pass, governed by the QUEST settings rather than the container toggle: starting a
+-- quest is accepting one, so it goes through the same accept filter as every other quest.
+-- Kept apart from ProcessContainerItem, which still never opens a quest-class item — opening
+-- one out of quest order can consume something you can't get back; starting the quest it
+-- begins is the item's whole purpose.
+local triedQuestItems = {}  -- [questID] = true: one try per session (a level-locked quest refuses)
+local lastQuestScan = 0
+-- ponytail: a full bag walk per scan (one quest-info read per slot), capped at once a second;
+-- bag updates arrive in bursts while looting. Index by bag/slot change if it ever shows up.
+local QUEST_SCAN_INTERVAL = 1.0
+
+local function StartBagQuest()
+    local config = GetConfig()
+    if not (config and config.Get(nil, "enabled")) then return end
+    if config.Get("quest", "startQuestItems") == false or config.Get("quest", "acceptQuestItems") == false then
+        return
+    end
+    if not (C_Container and C_Container.GetContainerItemQuestInfo) then return end
+    if InCombatLockdown() or pendingContainerUnlock or IsBagSortingActive() then return end
+    local safety = GetSafetyEngine()
+    if not (safety and safety.IsState("IDLE")) then return end
+    local services = GetServices()
+    if not (services and services.ValidateAutomationPreconditions()) then return end
+    -- Never over an open dialog: the quest window this opens would replace the conversation.
+    if services.IsInteractionFrameOpen() then return end
+    local questEngine = JustQuest.Core.GetModule("QuestEngine")
+    if not (questEngine and questEngine.GetActionableQuests) then return end
+    local wait = QUEST_SCAN_INTERVAL - (GetTime() - lastQuestScan)
+    if wait > 0 then
+        -- Defer, don't drop: the item that just landed would otherwise wait for the 30s scan.
+        services.ScheduleOnce("bag_quest_scan", wait + 0.01, function() pcall(StartBagQuest) end)
+        return
+    end
+    lastQuestScan = GetTime()
+
+    for bagID, slotID, info in ForEachBagItem() do
+        local ok, quest = pcall(C_Container.GetContainerItemQuestInfo, bagID, slotID)
+        local questID = ok and quest and quest.questID
+        -- Blizzard's own "!" rule (ContainerFrameItemButtonMixin:UpdateQuestItem): it begins
+        -- a quest you aren't on yet.
+        if questID and not quest.isActive and not triedQuestItems[questID]
+           -- Bound items only. 94 quest starters are tradeable (Darkmoon Faire decks, Battered
+           -- Hilt, keys) — using one would spend something you could sell.
+           and info.isBound then
+            local _, actionable = questEngine.GetActionableQuests({}, { { questID = questID } })
+            if actionable[1] then
+                triedQuestItems[questID] = true
+                if pcall(C_Container.UseContainerItem, bagID, slotID) then
+                    Debug(string.format("Starting quest %d from bag item %d", questID, info.itemID))
+                end
+                return  -- one per pass: the quest window it opens is the next step
+            end
+        end
+    end
+end
+
+-- ============================================================
 -- Event Handlers
 -- ============================================================
 
+-- "Scan now". Also called by timers (post-automation, confirm, periodic), so it must not
+-- record a bag update — only the real BAG_UPDATE_DELAYED event does (see RecordBagUpdate).
 function ContainerEngine.OnBagUpdateDelayed()
-    -- Track BAG_UPDATE_DELAYED for sort detection even when we skip opening.
-    -- Recorded once here; OpenBagContainers only READS the state (IsBagSortingActive).
-    RecordBagUpdate()
-
     if isProcessing then
         return
     end
     
     isProcessing = true
     pcall(ContainerEngine.OpenBagContainers)
+    pcall(StartBagQuest)
     isProcessing = false
 end
 
@@ -564,6 +636,7 @@ function ContainerEngine.Initialize()
 
     eventFrame:SetScript("OnEvent", function(self, event, ...)
         if event == "BAG_UPDATE_DELAYED" then
+            RecordBagUpdate()  -- exactly once per real event, even when the scan is skipped
             ContainerEngine.OnBagUpdateDelayed()
         elseif event == "ITEM_LOCK_CHANGED" then
             local bagID, slotID = ...
@@ -625,6 +698,6 @@ end
 -- Module Registration
 -- ============================================================
 
-JustQuest.Core.RegisterModule("ContainerEngine", ContainerEngine, {"Config", "Services", "SafetyEngine"})
+JustQuest.Core.RegisterModule("ContainerEngine", ContainerEngine, {"Config", "Services", "SafetyEngine", "GameData"})
 
 return ContainerEngine

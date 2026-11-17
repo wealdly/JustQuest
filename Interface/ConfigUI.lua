@@ -3,6 +3,12 @@
 
 local ADDON_NAME, JustQuest = ...
 
+-- Namespaced APIs first. The bare GetSpecialization / GetSpecializationInfo globals are only
+-- compatibility shims (Blizzard_DeprecatedSpecialization), and that addon does NOT load on WoW
+-- Forever ("AllowLoadGameType: classic, standard") — calling the bare name there throws.
+local GetSpecialization     = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+
 local ConfigUI = {}
 
 -- ============================================================
@@ -172,6 +178,9 @@ local function CreateInstanceOptions()
         type = "group",
         name = "Instances",
         order = 4,
+        -- Quick Exit, delves and Torghast are all absent from WoW Forever, so the whole
+        -- tab would be settings for content that can't occur there.
+        hidden = JustQuest.Constants.IS_FOREVER,
         args = {
             intro = {
                 type = "description",
@@ -377,9 +386,12 @@ local function CreateGearOptions()
                 type = "description",
                 order = 1,
                 fontSize = "medium",
-                name = "Scores the gear in your bags with Pawn and, when it finds an upgrade for your current spec, prompts you to equip it — one at a time, with " .. GOOD .. "Equip|r / " .. DANGER .. "Never|r. " ..
+                name = "Scores the gear in your bags and, when it finds an upgrade for your current spec, prompts you to equip it — one at a time, with " .. GOOD .. "Equip|r / " .. DANGER .. "Never|r. " ..
                        "Turn on Auto-Equip to skip the prompt and just equip.\n\n" ..
-                       WARN .. "Needs a Pawn scale for the spec you're playing.|r  Trinkets aren't scored (a Pawn limitation).",
+                       (JustQuest.Constants.IS_FOREVER
+                           and "Upgrades are judged on item level, after filtering out gear your class shouldn't wear.\n\n"
+                           or "Pawn does the scoring when it's installed with a scale for the spec you're playing. Without it, upgrades are judged on item level and the prompt says so.\n\n") ..
+                       WARN .. "Trinkets aren't scored.|r",
             },
 
             settings = {
@@ -396,6 +408,32 @@ local function CreateGearOptions()
                         order = 1,
                         get = CreateAccessor("gearSwap", "advisorEnabled").get,
                         set = CreateAccessor("gearSwap", "advisorEnabled").set,
+                    },
+                    -- WoW Forever only: the game reports one spec per class, always "damage", so
+                    -- the role that decides which stats count comes from the player. Per character.
+                    role = {
+                        type = "select",
+                        name = "Role (this character)",
+                        desc = "Which stats count when comparing gear. Hybrids pick melee or caster damage — "
+                            .. "an Enhancement and an Elemental shaman want opposite gear. "
+                            .. "Type /jq gear stats to see how your equipped gear scores.",
+                        order = 1.5,
+                        hidden = not JustQuest.Constants.IS_FOREVER,
+                        disabled = advisorDisabled,
+                        values = function()
+                            local cw = JustQuest.Core.GetModule("ClassWeights")
+                            local out = {}
+                            for _, r in ipairs(cw and cw.GetRoles() or {}) do out[r] = cw.RoleLabel(r) end
+                            return out
+                        end,
+                        get = function()
+                            local cw = JustQuest.Core.GetModule("ClassWeights")
+                            return cw and cw.GetRole()
+                        end,
+                        set = function(_, value)
+                            local cw = JustQuest.Core.GetModule("ClassWeights")
+                            if cw then cw.SetRole(value) end
+                        end,
                     },
                     autoEquip = {
                         type = "toggle",
@@ -457,6 +495,7 @@ local function CreateGearOptions()
                     weightItemLevel = {
                         type = "toggle",
                         name = "Weight Item Level (Pawn)",
+                        hidden = JustQuest.Constants.IS_FOREVER,  -- no Pawn there
                         desc = "Adds Item Level to Pawn as a weightable stat, so a big item-level jump counts even when secondary stats are flat. " ..
                                "After enabling, give it a weight in your Pawn scale (e.g. ItemLevel=5) or in Pawn's stat list under \"JustQuest\".\n\n" ..
                                WARN .. "Affects all Pawn scoring — tooltips, reward picks, and the advisor — and modifies Pawn globally.|r",
@@ -482,9 +521,9 @@ local function CreateGearOptions()
                         name = function()
                             local advisor = JustQuest.Core.GetModule("GearAdvisor")
                             local ps = JustQuest.Core.GetModule("PawnScoring")
-                            if PawnGetItemData == nil then
-                                return MUTED .. "Pawn is not installed — the advisor needs Pawn to score gear.|r"
-                            end
+                            -- No Pawn is not "no advisor": it scores by item level then, so the
+                            -- list shows either way. (This used to stop here, which left the list
+                            -- permanently empty wherever Pawn isn't installed — all of Forever.)
                             local recs = advisor and advisor.GetRecommendations() or {}
                             local count = 0
                             for _ in pairs(recs) do count = count + 1 end
@@ -492,10 +531,11 @@ local function CreateGearOptions()
                                 -- Active spec, matching what the advisor actually scores
                                 -- with — not the loot spec, or this reports "no scale" for
                                 -- a spec the advisor never consulted.
-                                if ps and ps.HasScaleForSpec and not ps.HasScaleForSpec(GetSpecialization()) then
+                                if PawnGetItemData ~= nil and ps and ps.HasScaleForSpec
+                                   and not ps.HasScaleForSpec(GetSpecialization()) then
                                     return WARN .. "No active Pawn scale for this spec — set one up in Pawn (usually automatic). Run |r" .. EM .. "/jq gear check|r" .. WARN .. " for details.|r"
                                 end
-                                return MUTED .. "No upgrades in your bags for this spec right now.|r"
+                                return MUTED .. "No upgrades in your bags right now.|r"
                             end
                             local s = string.format(EM .. "%d upgrade%s available:|r\n", count, count == 1 and "" or "s")
                             for _, rec in pairs(recs) do
@@ -659,6 +699,43 @@ local function CreateQuestOptions()
                         get = CreateAccessor("quest", "acceptQuestItems").get,
                         set = CreateAccessor("quest", "acceptQuestItems").set,
                     },
+                    acceptEscort = {
+                        type = "toggle",
+                        name = "Accept Shared Group Quests",
+                        desc = "Accept escort and group quests a party member starts and shares with you. "
+                            .. "The other quest settings and your blocked list still apply.",
+                        order = 8,
+                        get = CreateAccessor("quest", "acceptEscort").get,
+                        set = CreateAccessor("quest", "acceptEscort").set,
+                    },
+                    startQuestItems = {
+                        type = "toggle",
+                        name = "Start Quests from Items in Bags",
+                        desc = "Use items in your bags that begin a quest (\"This Item Begins a Quest\"). "
+                            .. "Only items bound to you — tradeable ones like Darkmoon Faire decks are left alone. "
+                            .. "Needs Accept Item/Proximity Quests.",
+                        order = 9,
+                        get = CreateAccessor("quest", "startQuestItems").get,
+                        set = CreateAccessor("quest", "startQuestItems").set,
+                    },
+                    acceptQuestChoices = {
+                        type = "toggle",
+                        name = "Accept Story Choices That Give a Quest",
+                        desc = "Answer story windows with a single option whose button gives you a quest. "
+                            .. "Windows with more than one option are always left for you.",
+                        order = 10,
+                        get = CreateAccessor("quest", "acceptQuestChoices").get,
+                        set = CreateAccessor("quest", "acceptQuestChoices").set,
+                    },
+                    followUpCue = {
+                        type = "toggle",
+                        name = "Next-Quest Hint",
+                        desc = "When a follow-up quest appears just after the quest giver's window has closed, "
+                            .. "show a short hint to talk to them again.",
+                        order = 11,
+                        get = CreateAccessor("quest", "followUpCue").get,
+                        set = CreateAccessor("quest", "followUpCue").set,
+                    },
                 }
             },
             rewards = {
@@ -690,6 +767,7 @@ local function CreateQuestOptions()
                     usePawnScoring = {
                         type = "toggle",
                         name = "Use Pawn for Upgrade Scoring",
+                        hidden = JustQuest.Constants.IS_FOREVER,  -- no Pawn there
                         desc = "When Pawn is installed, use stat-weight scoring to pick the best upgrade.\n" ..
                                "Disable to always compare by item level instead.",
                         order = 3,
@@ -705,6 +783,7 @@ local function CreateQuestOptions()
                     pawnUseLootSpec = {
                         type = "toggle",
                         name = "Follow Loot Specialization",
+                        hidden = JustQuest.Constants.IS_FOREVER,  -- no Pawn, one spec per class
                         desc = "Use your Loot Specialization setting (right-click portrait) to choose Pawn scales, " ..
                                "rather than your currently active spec.\n" ..
                                "Useful when queuing as DPS but gearing for tank/healer.",

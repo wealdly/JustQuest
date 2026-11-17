@@ -217,9 +217,13 @@ local function SelectOption(option, safetyEngine, services)
         safetyEngine.MarkSelection(option.gossipOptionID or option.orderIndex)
     end
 
+    -- Seeded with the menu as it stands: the client keeps showing it until the server's reply
+    -- lands, and this check must act on the reply, not re-judge the menu we just answered.
+    -- The reply's own events (GOSSIP_SHOW, QUEST_DETAIL) still trigger passes of their own.
     if services and services.ScheduleContentCheck then
         local pumpDelay = services.GetTiming and services.GetTiming("QUEST_PUMP_STANDARD", 0.15) or 0.15
-        services.ScheduleContentCheck(pumpDelay, "after_gossip_selection")
+        services.ScheduleContentCheck(pumpDelay, "after_gossip_selection",
+            services.ContentFingerprint and (services.ContentFingerprint()))
     end
 
     return true
@@ -284,9 +288,9 @@ local function HandleGossip(skipPreChecks)
     if not currentNPC then return false end
     if state.expectedGUID and not SameNPC(state.expectedGUID, currentNPC) then return false end
 
-    -- Respect automation halt if no quest content exists
+    -- Respect automation halt unless there is quest work we'd actually do
     if state.automationHalted then
-        if not (services.HasGossipQuests and services.HasGossipQuests()) then
+        if not services.HasQuestGiverContent() then
             return false
         end
         state.automationHalted = false
@@ -361,7 +365,8 @@ local function HandleGossip(skipPreChecks)
     for _, option in ipairs(available) do
         if IsQuestOption(option)
            and TrySelectSafeOption(option, safetyEngine, services) then
-            safetyEngine.EndProcessing("quest_option_selected", true)
+            -- No repump here: SelectOption already queued the (seeded) post-selection check.
+            safetyEngine.EndProcessing("quest_option_selected")
             return true
         end
     end
@@ -462,11 +467,12 @@ local function HandleGossip(skipPreChecks)
         -- aggressive mode; `concluded` no longer lands here) — SINGLE SERVICE STEP
         -- (Blizzard-exact):
         -- exactly one option Blizzard marks auto-selectable (selectOptionWhenOnlyOption,
-        -- with an icon fallback), no quests pending, not forced. Mirrors HandleShow().
+        -- with an icon fallback), no quest work pending, not forced. Mirrors HandleShow(),
+        -- except that quests we'd never act on (incomplete, blocked, trivial, type off) don't
+        -- count: carrying an unfinished quest for a flight master shouldn't block the map.
         -- Safe as a catch-all: its own guards (single option, service, not forced) plus
         -- TrySelectSafeOption's blacklist check cover every way this branch is reached.
-        local npcHasQuests = (C_GossipInfo.GetNumAvailableQuests and C_GossipInfo.GetNumAvailableQuests() or 0) > 0
-                          or (C_GossipInfo.GetNumActiveQuests and C_GossipInfo.GetNumActiveQuests() or 0) > 0
+        local npcHasQuests = services.HasActionableQuestContent()
         if #available == 1 and IsServiceOption(available[1])
            and not npcHasQuests and not forceGossip then
             if TrySelectSafeOption(available[1], safetyEngine, services) then
@@ -621,6 +627,13 @@ function GossipEngine.OnGossipClosed(interactionIsContinuing)
         services.RestoreAutomationFrames()
     end
 
+    -- The server says the conversation goes on (gossip -> quest detail, -> a service): the next
+    -- dialog is the same conversation however long it takes, for the manual-conversation
+    -- boundary and the follow-up quest watch alike.
+    if interactionIsContinuing and services and services.NoteDialogContinuing then
+        services.NoteDialogContinuing()
+    end
+
     -- Gossip-specific state cleanup (always safe — gossip IS closed)
     state.confirmationPending = false
     state.automationHalted = false
@@ -658,7 +671,12 @@ function GossipEngine.OnGossipClosed(interactionIsContinuing)
     -- will handle state transitions. Premature reset causes race conditions:
     -- DispatchContent/repumps see IDLE and start new processing mid-turn-in.
     -- If truly stuck, SafetyEngine's periodic recovery handles it (1-4s).
-    if not (safetyEngine and safetyEngine.IsBusy()) then
+    -- Terminal means the conversation is really over: not mid-step (BUSY), not a close the
+    -- server flags as continuing, and not right on the heels of an automation step. A close
+    -- between a turn-in and the NPC's next menu is none of those — and tearing down there
+    -- cancelled the very re-check that was waiting for the follow-up quest.
+    local recentStep = (GetTime() - (JustQuest._lastProcessingTime or 0)) <= RESHOW_WINDOW
+    if not (safetyEngine and safetyEngine.IsBusy()) and not interactionIsContinuing and not recentStep then
         -- Terminal close: stop every pending automation timer (one set).
         if services and services.CancelAutomationTimers then
             services.CancelAutomationTimers()
@@ -668,7 +686,7 @@ function GossipEngine.OnGossipClosed(interactionIsContinuing)
             questEngine.ResetWorkflow()
         end
     elseif services and services.Debug then
-        services.Debug("Gossip", "OnGossipClosed: skipping state reset (BUSY - quest transition in progress)")
+        services.Debug("Gossip", "OnGossipClosed: not terminal (busy / continuing / recent step) - keeping pending checks")
     end
 end
 

@@ -720,6 +720,13 @@ function Config.InspectCurrentFrame()
         local contextAllowed = services.IsAutomationContextAllowed and services.IsAutomationContextAllowed() or false
         print("  Can Automate: " .. (canAutomate and "|cff00ff00✓|r" or "|cffff6666✗|r"))
         print("  Context: " .. (contextAllowed and "|cff00ff00✓|r" or "|cffff6666✗|r (invalid frame)"))
+        if services.GetActiveInteractions then
+            local open = services.GetActiveInteractions()
+            print("  NPC interactions: " .. (#open > 0 and table.concat(open, ", ") or "none"))
+        end
+        if services.IsManualConversation then
+            print("  Manual conversation: " .. (services.IsManualConversation() and "|cffffcc00YES|r" or "no"))
+        end
     end
     
     -- Recent Selections (if SafetyEngine available)
@@ -892,6 +899,22 @@ local function HandleSlashCommand(msg)
             print("|cff00ccffJustQuest:|r Gear Advisor never-recommend list cleared.")
             local advisor = JustQuest.Core.GetModule("GearAdvisor")
             if advisor and advisor.RescanNow then advisor.RescanNow() end
+        elseif sub == "stats" then
+            local cw = JustQuest.Core.GetModule("ClassWeights")
+            if cw then cw.DumpEquipped() end
+        elseif sub == "role" then
+            local cw = JustQuest.Core.GetModule("ClassWeights")
+            local want = rest and select(2, strsplit(" ", rest))
+            if cw and want and want ~= "" then
+                if cw.SetRole(want:lower()) then
+                    print("|cff00ccffJustQuest:|r Gear role: " .. cw.RoleLabel(cw.GetRole()))
+                else
+                    print("|cffff6666JustQuest:|r Not a role for this class. Choose: " .. table.concat(cw.GetRoles(), ", "))
+                end
+            elseif cw then
+                print("|cff00ccffJustQuest:|r Gear role: " .. cw.RoleLabel(cw.GetRole())
+                    .. "  (choose: " .. table.concat(cw.GetRoles(), ", ") .. ")")
+            end
         elseif sub == "on" or sub == "off" then
             Config.Set("gearSwap", "advisorEnabled", sub == "on")
             print("|cff00ccffJustQuest:|r Gear Advisor " .. (sub == "on" and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
@@ -900,7 +923,7 @@ local function HandleSlashCommand(msg)
             Config.Set("gearSwap", "advisorEnabled", not cur)
             print("|cff00ccffJustQuest:|r Gear Advisor " .. (not cur and "|cff00ff00ON|r" or "|cffff6666OFF|r"))
         else
-            print("|cffff6666Usage:|r /jq gear [on|off|check|clear]")
+            print("|cffff6666Usage:|r /jq gear [on|off|check|clear|stats|role <role>]")
         end
         return
     end

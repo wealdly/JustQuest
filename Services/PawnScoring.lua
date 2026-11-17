@@ -9,6 +9,12 @@
 
 local ADDON_NAME, JustQuest = ...
 
+-- Namespaced APIs first. The bare GetSpecialization / GetSpecializationInfo globals are only
+-- compatibility shims (Blizzard_DeprecatedSpecialization), and that addon does NOT load on WoW
+-- Forever ("AllowLoadGameType: classic, standard") — calling the bare name there throws.
+local GetSpecialization     = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+
 local PawnScoring = {}
 
 local GetConfig = JustQuest.Core.ModuleGetter("Config")

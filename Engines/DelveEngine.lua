@@ -14,6 +14,10 @@
 --     it's answered from curated data (Database/AnimaPowerDB.lua) rather than guessed at.
 --     When the data has nothing good to say, the choice goes back to you rather than
 --     defaulting to whatever sorted first.
+--   * a QUEST CHOICE (on by default, a quest setting): a story window whose only option has
+--     one button that grants a quest (`rewardQuestID`) — answering it IS accepting that quest,
+--     so it goes through the normal accept filter. Several buttons that each grant a quest
+--     ("which path?") is a real decision and stays yours.
 --
 -- Runs on its own frame, independent of the quest-automation dispatcher, so delve handling
 -- can't be cancelled by a modifier-key takeover of quest automation (it still honours the
@@ -152,10 +156,14 @@ DelveEngine.IsInDelve = IsInDelve
 -- works. Services.RestoreAutomationFrames un-hides it on periodic recovery, so a failure
 -- partway through can't strand you with an invisible dialog you can't answer.
 local function HidePowerFrame(ns)
-    if not Get(ns, "hidePowerFrame") then return end
+    -- Quest choices are hidden the way every other quest window is: in fast mode.
+    local want = (ns == "quest") and Get(nil, "fastMode") or Get(ns, "hidePowerFrame")
+    if not want then return end
     if PlayerChoiceFrame and PlayerChoiceFrame.SetAlpha then
         PlayerChoiceFrame:SetAlpha(0)
         powerFrameHidden = true
+        -- Counts as activity, or periodic recovery (reveals after 0.75s quiet) undoes the hide.
+        JustQuest._lastProcessingTime = GetTime()
     end
 end
 
@@ -188,6 +196,41 @@ local SCORED_KITS = {
 local function IsScoredChoice(info)
     local kit = info and info.uiTextureKit
     return (kit and SCORED_KITS[kit]) and true or false
+end
+
+-- A story choice that only hands out a quest: one option, one live button, no confirmation,
+-- nothing cast, and the button's rewardQuestID set — the server's own record of "picking this
+-- gives you quest N" (PlayerChoiceResponse.RewardQuestID). Returns button, option or nil.
+local function QuestChoice(info)
+    local options = info and info.options
+    if not (options and #options == 1) then return nil end
+    local option = options[1]
+    if option.spellID or option.disabledOption then return nil end
+    local buttons = option.buttons
+    if not (buttons and #buttons == 1) then return nil end
+    local button = buttons[1]
+    if not button.id or button.disabled then return nil end
+    -- The server wanting a second yes is the server asking. That's the player's to give.
+    if button.confirmation and button.confirmation ~= "" then return nil end
+    if type(button.rewardQuestID) ~= "number" or button.rewardQuestID <= 0 then return nil end
+    return button, option
+end
+
+-- May we answer it? Same accept filter as every other quest, plus the gates every automated
+-- step honours. Grouped inside an instance it's left alone, as gossip exploration is there:
+-- a story beat can start content for the whole group.
+local function QuestChoiceAllowed(questID)
+    if not On("quest", "acceptQuestChoices") then return false, "quest choices turned off" end
+    if IsInInstance() and IsInGroup() then return false, "grouped in an instance" end
+    local services = GetServices()
+    if services and services.CanAutomateBase and not services.CanAutomateBase() then
+        return false, "automation paused"
+    end
+    local questEngine = JustQuest.Core.GetModule("QuestEngine")
+    if not (questEngine and questEngine.GetActionableQuests) then return false, "no quest engine" end
+    local _, actionable = questEngine.GetActionableQuests({}, { { questID = questID } })
+    if not actionable[1] then return false, "quest filtered (blocked, type off, done, or log full)" end
+    return true
 end
 
 -- ============================================================
@@ -439,6 +482,9 @@ end
 -- is nothing left to retry at. That plus "no choice on screen" covers every observed case.
 local pendingSend = nil   -- { choiceID, buttonID, spellID, label, attempts }
 local SEND_RETRY_DELAY, SEND_MAX_ATTEMPTS = 0.4, 3
+-- Bumped on every PLAYER_CHOICE_UPDATE. A retry only re-sends against the offering it was
+-- scored on: buttonID is a per-offering slot, so after an update it may name another power.
+local choiceGen = 0
 
 -- Blizzard tears the window down CLIENT-SIDE, inside the button's click path:
 --     PlayerChoiceBaseOptionButtonTemplateMixin:OnConfirm
@@ -496,6 +542,8 @@ SendChoiceResponse = function(choiceID, buttonID, spellID, label, kind)
                     label = label, kind = kind or "Anima power", attempts = attempts }
 
     lastChoiceID, answeredChoice = choiceID, true
+    JustQuest._lastProcessingTime = GetTime()
+    local mine, gen = pendingSend, choiceGen
 
     -- Prefer the widget. It sends AND closes; the bare API only sends.
     local widget = FindOptionButton(buttonID)
@@ -520,8 +568,9 @@ SendChoiceResponse = function(choiceID, buttonID, spellID, label, kind)
     end
 
     C_Timer.After(SEND_RETRY_DELAY, function()
-        -- Cleared by OnPlayerChoiceClose: the window shut, so the answer was taken.
-        if not pendingSend then return end
+        -- Cleared by OnPlayerChoiceClose (the window shut, so the answer was taken), or
+        -- replaced by a newer send whose own timer owns it now.
+        if pendingSend ~= mine then return end
 
         local ok, cur = pcall(C_PlayerChoice.GetCurrentPlayerChoiceInfo)
         local open = ok and cur and cur.options and #cur.options > 0
@@ -544,6 +593,13 @@ SendChoiceResponse = function(choiceID, buttonID, spellID, label, kind)
             -- The offer moved on. Either our response landed, or the next power replaced it —
             -- both mean there is nothing left to retry at.
             Notify(("%s: %s"):format(pendingSend.kind or "Anima power", pendingSend.label or "taken"))
+            pendingSend = nil
+            return
+        end
+
+        if choiceGen ~= gen then
+            -- A new offering arrived (our power is in it again). Its own AcceptPower scores
+            -- and answers it; re-sending our old slot here would pick blind.
             pendingSend = nil
             return
         end
@@ -869,8 +925,10 @@ local function AcceptScoredPower(info)
 
     -- Every option is a trap, or none is usable. THIS is the real decision — which harm to
     -- accept — so it goes back to the player.
+    -- A reroll answers this offering: mark it, or the 0.3s second pass takes a power from
+    -- the offering the server is replacing. The reroll's own update clears the mark.
     if not buttonID then
-        if TryReroll() then return end
+        if TryReroll() then lastChoiceID, answeredChoice = info.choiceID, true return end
         Debug(("nothing safe to take (%d blocked) — handing it back"):format(blocked))
         lastChoiceID, answeredChoice = info.choiceID, true
         return RestorePowerFrame()
@@ -885,7 +943,7 @@ local function AcceptScoredPower(info)
     -- The protection that matters is the blocklist, and it is independent of this: a blocked
     -- power is never the best option because it is never an option at all.
     if score < floor then
-        if TryReroll() then return end
+        if TryReroll() then lastChoiceID, answeredChoice = info.choiceID, true return end
         Debug(("best %s scored %s, under the floor of %d — taking it anyway, nothing here is harmful")
               :format(tostring(name), tostring(score), floor))
     end
@@ -959,6 +1017,7 @@ local function AcceptPower()
             Debug(("no choice info yet (poll %d/%d)"):format(infoPolls, MAX_INFO_POLLS))
             local services = GetServices()
             if services and services.ScheduleOnce then
+                JustQuest._lastProcessingTime = GetTime()  -- still working: keep the frame hidden
                 services.ScheduleOnce("delve_power_poll", 0.3, AcceptPower)
             end
         else
@@ -999,6 +1058,18 @@ local function AcceptPower()
     if IsScoredChoice(info) then
         if not On("torghast", "autoSelectPower") then return RestorePowerFrame() end
         return AcceptScoredPower(info)
+    end
+
+    -- A choice that only grants a quest. Not allowed -> fall through: inside a delve the power
+    -- path may still own it; anywhere else the gates below hand it back.
+    local questButton, questOption = QuestChoice(info)
+    if questButton then
+        local allowed, why = QuestChoiceAllowed(questButton.rewardQuestID)
+        if allowed then
+            return SendChoiceResponse(info.choiceID, questButton.id, questOption.spellID,
+                questOption.header or ("quest " .. questButton.rewardQuestID), "Quest choice")
+        end
+        Debug("quest choice not taken: " .. tostring(why))
     end
 
     if not On("delve", "autoAcceptPower") then return RestorePowerFrame() end
@@ -1050,6 +1121,8 @@ local function PendingOwner()
         if ok and info and IsScoredChoice(info) then
             return On("torghast", "autoSelectPower") and "torghast" or nil
         end
+        local questButton = ok and info and QuestChoice(info)
+        if questButton and QuestChoiceAllowed(questButton.rewardQuestID) then return "quest" end
     end
     -- The choice data isn't always populated this early. The delve gate doesn't need it, so
     -- it still answers; a scored kit that arrives late just isn't pre-hidden (a brief flash,
@@ -1059,11 +1132,13 @@ local function PendingOwner()
 end
 
 function DelveEngine.OnPlayerChoiceUpdate()
+    choiceGen = choiceGen + 1  -- before the gates: a stale retry must stand down regardless
     -- The probe deliberately bypasses both gates: diagnosing why nothing fired is most useful
     -- precisely when a toggle is off or a modifier is held, which is when it fires nothing.
     if not probeArmed then
         if not MayAutomate() then return end
-        if not (On("delve", "autoAcceptPower") or On("torghast", "autoSelectPower")) then return end
+        if not (On("delve", "autoAcceptPower") or On("torghast", "autoSelectPower")
+                or On("quest", "acceptQuestChoices")) then return end
     end
     answeredChoice = false
     infoPolls = 0
@@ -1251,6 +1326,13 @@ end)
 
 function DelveEngine.Initialize()
     -- Frame + events wired at load; every handler re-checks its own toggle.
+end
+
+-- Disabling cancels every timer, including periodic recovery — so a choice hidden right now
+-- would stay invisible. Hand it back.
+function DelveEngine.OnDisable()
+    pendingSend = nil
+    RestorePowerFrame()
 end
 
 JustQuest.Core.RegisterModule("DelveEngine", DelveEngine, {"Config", "Services"})

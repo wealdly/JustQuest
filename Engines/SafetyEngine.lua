@@ -427,10 +427,11 @@ function SafetyEngine.EndProcessing(reason, shouldRepump)
 
     SafetyEngine.SetState("IDLE", reason or "processing_complete")
 
+    -- Container scans wait for combat to end (opening one is a bag action); the content
+    -- re-check does not — quest and gossip steps work in combat, and gating it here meant a
+    -- turn-in mid-fight never looked for the follow-up quest.
     if not InCombatLockdown() then
         local containerEngine = JustQuest.Core.GetModule("ContainerEngine")
-
-        -- Schedule container scan
         if containerEngine and services and services.ScheduleOnce then
             local scanDelay = services.GetTiming and services.GetTiming("CONTAINER_SCAN_AFTER_AUTOMATION", 0.25) or 0.25
             services.ScheduleOnce("container_scan_after_automation_safety", scanDelay, function()
@@ -439,12 +440,12 @@ function SafetyEngine.EndProcessing(reason, shouldRepump)
                 end
             end)
         end
+    end
 
-        -- Schedule content repump only when explicitly requested
-        if shouldRepump and services and services.ScheduleContentCheck then
-            local repumpDelay = services.GetTiming and services.GetTiming("REINTERACT_AFTER_TURNIN", 0.15) or 0.15
-            services.ScheduleContentCheck(repumpDelay, "safety_end_processing")
-        end
+    -- Schedule content repump only when explicitly requested
+    if shouldRepump and services and services.ScheduleContentCheck then
+        local repumpDelay = services.GetTiming and services.GetTiming("REINTERACT_AFTER_TURNIN", 0.15) or 0.15
+        services.ScheduleContentCheck(repumpDelay, "safety_end_processing")
     end
 end
 

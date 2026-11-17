@@ -27,7 +27,8 @@ for path in files:
             decl[m.group(1)] = i
 
     for name, dline in decl.items():
-        word = re.compile(r"\b" + re.escape(name) + r"\b")
+        # Bare references only: `services.Debug` or `obj:Debug` is a field, not the local.
+        word = re.compile(r"(?<![.:\w])" + re.escape(name) + r"\b")
         for i, line in enumerate(lines[:dline]):
             stripped = line.strip()
             if not line.startswith((" ", "\t")):

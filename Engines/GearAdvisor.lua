@@ -21,6 +21,12 @@
 
 local ADDON_NAME, JustQuest = ...
 
+-- Namespaced APIs first. The bare GetSpecialization / GetSpecializationInfo globals are only
+-- compatibility shims (Blizzard_DeprecatedSpecialization), and that addon does NOT load on WoW
+-- Forever ("AllowLoadGameType: classic, standard") — calling the bare name there throws.
+local GetSpecialization     = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+
 local GearAdvisor = {}
 
 local GetConfig      = JustQuest.Core.ModuleGetter("Config")
@@ -29,6 +35,7 @@ local GetPawnScoring = JustQuest.Core.ModuleGetter("PawnScoring")
 local GetToast       = JustQuest.Core.ModuleGetter("GearToast")
 local GetGameData    = JustQuest.Core.ModuleGetter("GameData")
 local GetSafety      = JustQuest.Core.ModuleGetter("SafetyEngine")
+local GetClassWeights = JustQuest.Core.ModuleGetter("ClassWeights")
 
 -- Equip location -> inventory slot(s). Trinkets (13/14), shirt (4), tabard (19) are
 -- excluded (Pawn won't score trinkets; the others are cosmetic). Rings and 1H weapons
@@ -41,8 +48,28 @@ local INVTYPE_SLOTS = {
     INVTYPE_WEAPON = {16, 17}, INVTYPE_2HWEAPON = {16},
     INVTYPE_WEAPONMAINHAND = {16}, INVTYPE_WEAPONOFFHAND = {17},
     INVTYPE_HOLDABLE = {17}, INVTYPE_SHIELD = {17},
-    INVTYPE_RANGED = {16}, INVTYPE_RANGEDRIGHT = {16},
+    -- Main hand on retail, the ranged slot on Forever (see Constants.RANGED_SLOT).
+    INVTYPE_RANGED = {JustQuest.Constants.RANGED_SLOT},
+    INVTYPE_RANGEDRIGHT = {JustQuest.Constants.RANGED_SLOT},
 }
+if JustQuest.Constants.IS_FOREVER then
+    INVTYPE_SLOTS.INVTYPE_THROWN = {JustQuest.Constants.RANGED_SLOT}
+    INVTYPE_SLOTS.INVTYPE_RELIC  = {JustQuest.Constants.RANGED_SLOT}
+end
+
+-- The slots an item can actually replace. Differs from INVTYPE_SLOTS only for a one-hander,
+-- which competes for the off-hand only when the character can dual wield and the off-hand
+-- holds a weapon (GameData.OneHanderFitsOffHand) — not a shield or a held item.
+local MAIN_HAND_ONLY = {16}
+local function ComparableSlots(invType)
+    if invType == "INVTYPE_WEAPON" then
+        local gameData = JustQuest.Core.GetModule("GameData")
+        if gameData and gameData.OneHanderFitsOffHand and not gameData.OneHanderFitsOffHand() then
+            return MAIN_HAND_ONLY
+        end
+    end
+    return INVTYPE_SLOTS[invType]
+end
 
 local FIRST_SLOT = INVSLOT_FIRST_EQUIPPED or 1
 local LAST_SLOT  = INVSLOT_LAST_EQUIPPED or 19
@@ -62,6 +89,12 @@ local pendingManual   = false  -- carry the manual (player-clicked) intent acros
 local promptedID
 local lastFingerprint          -- equippable bag contents at the last scored scan
 local forceNext       = false  -- score the next scan even if the bags look unchanged
+-- Retrying a scan whose items hadn't loaded yet: per bag state, every 2s, ~30s at most.
+local settleFingerprint, settleRetries = nil, 0
+-- One line about the last scan that FINISHED scoring, for /jq gear check. Still nil after a
+-- reload means no scan has completed — a scan error, which the timer would otherwise swallow.
+local lastScanNote
+local SETTLE_RETRY_DELAY, SETTLE_MAX_RETRIES = 2, 15
 
 -- A travel item — a teleport cloak, a port trinket — is a downgrade on paper: Pawn scores stats
 -- and a teleport has none. So the instant one goes on, the scan wants the real piece back, which
@@ -213,6 +246,12 @@ local function CanPlayerEquip(link, id)
     local usable = not (gameData and gameData.ItemFailsARequirement
                         and gameData.ItemFailsARequirement(link))
 
+    -- A profession tool with weapon damage (Mining Pick, Skinning Knife...) is carried for the
+    -- profession, not to fight with — never offer to equip one.
+    if usable and gameData and gameData.IsProfessionTool and gameData.IsProfessionTool(link) then
+        usable = false
+    end
+
     if usable and gameData and gameData.ItemIsWrongArmorType
        and gameData.ItemIsWrongArmorType(link) then
         usable = false
@@ -251,7 +290,7 @@ local function ReplacedLink(rec)
 end
 
 local function ResolveSlot(rec)
-    local slots = INVTYPE_SLOTS[rec.invType]
+    local slots = ComparableSlots(rec.invType)
     if not slots then return nil end
     -- Target the slot holding the exact item Pawn says it replaces (handles ring
     -- 11-vs-12, weapon 16-vs-17). Pawn's ExistingItemLink is unenchanted, so match by
@@ -302,7 +341,7 @@ local function ItemLevel(link)
 end
 
 local function ScoreByItemLevel(link, invType)
-    local slots = INVTYPE_SLOTS[invType]
+    local slots = ComparableSlots(invType)
     if not slots then return nil end
 
     local candidate = ItemLevel(link)
@@ -331,6 +370,18 @@ local function ScoreByItemLevel(link, invType)
         existingItemLink   = worstLink,
         byItemLevel        = true,
     }
+end
+
+-- Forever's scorer (Services/ClassWeights.lua): stats weighted for class + role, against the
+-- weaker of the slots the item can replace. A two-hander is weighed against the main hand AND
+-- the off-hand it would take with it — that pair is what actually comes off. Same shape as the
+-- Pawn and item-level results, so everything downstream is unchanged.
+local function ScoreByClassWeights(cw, link, invType)
+    local slots = ComparableSlots(invType)
+    if not slots then return nil end
+    -- The whole verdict, "not an upgrade" included: nil has to keep meaning "no verdict yet"
+    -- (item or tooltip data still loading), because that's what the scan retries on.
+    return cw.CompareToEquipped(link, slots, DisplacedOffHand(invType, slots[1]))
 end
 
 local function Enabled()
@@ -503,8 +554,12 @@ local function ShowNextPrompt()
 
     local actions = {
         { text = "Equip", func = function()
-            GearAdvisor.EquipRec(best, true)
-            RemoveRec(best.id)          -- gone from the list; don't re-offer it
+            -- Only drop it once the equip was actually accepted. A refusal (combat, or a
+            -- soulbind popup still waiting on the previous one) used to remove it anyway,
+            -- so the click did nothing and the item quietly left the list.
+            if GearAdvisor.EquipRec(best, true) then
+                RemoveRec(best.id)      -- gone from the list; don't re-offer it
+            end
             ShowNextPrompt()
         end },
     }
@@ -516,6 +571,8 @@ local function ShowNextPrompt()
     -- Name the weaker basis. "+18% upgrade" from item level alone is a different claim from
     -- the same number out of a stat scale, and the player can only judge it if they're told.
     local heading = best.byItemLevel and "Gear upgrade (by item level)" or "Gear upgrade"
+    local cw = best.byClassStats and GetClassWeights()
+    if cw then heading = "Gear upgrade (" .. cw.RoleLabel(cw.GetRole()):lower() .. " stats)" end
     if pending > 1 then
         heading = heading .. "  (" .. pending .. " waiting)"
         actions[#actions + 1] = { text = "Equip All", func = function()
@@ -687,7 +744,10 @@ function GearAdvisor.Scan()
         Debug("scan: bags unchanged (" .. seen .. " equippable) — skipped scoring")
         return
     end
-    lastFingerprint = fp
+    -- lastFingerprint is set only once scoring completes (below): a scan that throws part-way
+    -- must not leave these bags filed as scored, or every later scan skips them as unchanged.
+    -- New bag contents get a fresh retry budget (see the unsettled handling after the loop).
+    if fp ~= settleFingerprint then settleFingerprint, settleRetries = fp, 0 end
 
     -- Hot path: resolve the applicable Pawn scales ONCE for the whole scan, not per item.
     --
@@ -701,14 +761,20 @@ function GearAdvisor.Scan()
     -- reward is a thing you keep for later; this is a thing you put on now.
     local spec = GetSpecialization()
     local relevant = ps.RelevantScales(spec)
-    if not relevant then
+    -- Without Pawn: on Forever the class + role weights (item levels mean nothing there); on
+    -- retail item level, which does.
+    local cw = GetClassWeights()
+    local classStats = not relevant and cw and cw.IsActive()
+    if classStats then
+        Debug("scan: no Pawn scale — scoring by class weights (" .. cw.RoleLabel(cw.GetRole()) .. ")")
+    elseif not relevant then
         -- No scale for the spec being played (or no Pawn at all). Item level takes over so the
         -- advisor still says something; see ScoreByItemLevel for why crude beats silent.
         Debug("scan: no Pawn scale applies to the spec you're playing — scoring by item level")
     end
 
     -- Pass 2 — score.
-    local scored = 0
+    local scored, unsettled = 0, 0
     local recs = {}
 
     -- Protection is a property of the SLOT, but the loop below runs per candidate: five
@@ -732,10 +798,19 @@ function GearAdvisor.Scan()
         local result
         if relevant then
             result = ps.ScoreItem(c.link, spec, relevant)
+        elseif classStats then
+            result = ScoreByClassWeights(cw, c.link, c.invType)
         else
             result = ScoreByItemLevel(c.link, c.invType)
         end
-        if result then scored = scored + 1 end
+        if result then
+            scored = scored + 1
+        elseif relevant or classStats or not C_Item.GetItemInfo(c.link) then
+            -- No verdict, as opposed to "not an upgrade": the item (or what it would replace)
+            -- hasn't loaded. Item level answers nil for both, so it only counts when the item
+            -- itself is uncached.
+            unsettled = unsettled + 1
+        end
         if result and result.isUpgrade and result.pawnPercentUpgrade >= minPct then
             local rec = {
                 link         = c.link,
@@ -745,6 +820,7 @@ function GearAdvisor.Scan()
                 bound        = c.bound,
                 id           = c.id,
                 byItemLevel  = result.byItemLevel,  -- say so in the prompt; it's a weaker claim
+                byClassStats = result.byClassStats,
             }
             -- Keyed by DESTINATION SLOT, not equip location: a shield, an off-hand weapon
             -- and a held-in-off-hand frill are three equip locations that all land in slot
@@ -762,11 +838,41 @@ function GearAdvisor.Scan()
         end
     end
     recommendations = recs
+    lastFingerprint = fp
+    lastScanNote = ("%s: %d scored by %s, %d recommendation(s)%s"):format(date("%H:%M:%S"), scored,
+        relevant and "Pawn" or (classStats and "class weights" or "item level"),
+        (function() local n = 0 for _ in pairs(recs) do n = n + 1 end return n end)(),
+        unsettled > 0 and (", " .. unsettled .. " not loaded yet") or "")
+
+    -- Items that got no verdict because their data hadn't loaded (typical right after login,
+    -- and on Forever, where item data arrives late). The fingerprint above would otherwise
+    -- file this bag state as scored, and every later scan would skip it as "unchanged" — the
+    -- upgrade then never appears until something unrelated moves in the bags. Forget the
+    -- print and look again shortly; bounded, since an item that never loads mustn't keep it up.
+    if unsettled > 0 then
+        lastFingerprint = nil
+        settleRetries = settleRetries + 1
+        if settleRetries <= SETTLE_MAX_RETRIES then
+            Debug(("scan: %d item(s) not loaded yet — retrying in %ds (%d/%d)"):format(
+                unsettled, SETTLE_RETRY_DELAY, settleRetries, SETTLE_MAX_RETRIES))
+            local services = GetServices()
+            if services and services.ScheduleOnce then
+                services.ScheduleOnce("gear_advisor_settle", SETTLE_RETRY_DELAY, function()
+                    forceNext = true
+                    GearAdvisor.Scan()
+                    -- In auto-equip mode the late verdict is acted on too, or it would sit in
+                    -- the list: nothing else is coming to trigger the equip.
+                    local cfg = GetConfig()
+                    if cfg and cfg.Get("gearSwap", "autoEquip") then GearAdvisor.EquipAll(false) end
+                end)
+            end
+        end
+    end
 
     local nRecs = 0
     for _ in pairs(recs) do nRecs = nRecs + 1 end
     Debug(string.format("scan: %d equippable in bags, %d in scorable slots, %d scored (%s), %d recommendation(s)",
-        seen, #candidates, scored, relevant and "Pawn" or "item level", nRecs))
+        seen, #candidates, scored, relevant and "Pawn" or (classStats and "class weights" or "item level"), nRecs))
 
     -- A prompt outlives the scan that raised it, so it can go stale: equip the item
     -- yourself (or sell it, or find something better), and the rebuild above drops it from
@@ -807,23 +913,53 @@ end
 -- Equip
 -- ============================================================
 
+-- Equipping an unbound item is a question, not an action: the server raises a soulbind popup
+-- and the answer arrives whenever the player gets to it. Those popups are exclusive — showing
+-- one hides any other, and hiding one runs its OnHide, which CANCELS the equip waiting
+-- underneath. So a second equip doesn't queue a second question; it throws the first item away
+-- and re-asks in identical words (the popup never names the item). "Equip All" over three
+-- bind-on-equip pieces could equip only the last, and reported all three.
+--
+-- Hence: nothing is equipped while a confirmation is on screen — ours or one the player raised
+-- themselves — and a batch stops at the item it asked about until that answer lands.
+local BIND_POPUPS = { "EQUIP_BIND", "EQUIP_BIND_REFUNDABLE", "EQUIP_BIND_TRADEABLE" }
+
+local function BindPopupUp()
+    if not StaticPopup_Visible then return false end
+    for _, which in ipairs(BIND_POPUPS) do
+        if StaticPopup_Visible(which) then return true end
+    end
+    return false
+end
+
+local bindAsked  -- { rec, slot } for a confirmation we raised, until the next pass reads it
+
 local function CanEquipNow()
     -- Re-check the toggles, not just the physical state. A deferred equip retries on a
     -- timer, so the player can turn the advisor (or auto-equip) off inside that window
     -- and still have gear swapped from a stale recommendation.
-    if not Enabled() then return false end
-    if InCombatLockdown() or UnitIsDeadOrGhost("player") then return false end
+    -- Second return is the reason, for the log: "Equip All did nothing" is otherwise
+    -- indistinguishable from "Equip All was told not to", and only one of those is a bug.
+    if not Enabled() then return false, "advisor off" end
+    if InCombatLockdown() or UnitIsDeadOrGhost("player") then return false, "in combat / dead" end
+    -- A soulbind confirmation is open: equipping anything now would hide it and cancel the
+    -- equip it is asking about, so the player's answer would land on nothing.
+    if BindPopupUp() then return false, "waiting on a soulbind confirmation" end
     -- Mid-trip: a travel item only works from an equipped slot, so swapping it out here doesn't
     -- just re-gear you, it cancels the teleport. The caller's retry picks this up on arrival.
-    if TravelHold() then return false end
+    if TravelHold() then return false, "travel item in use" end
     local services = GetServices()
-    if services and services.InSpecialControlState and services.InSpecialControlState() then return false end
-    if services and services.ShouldAutomate and not services.ShouldAutomate() then return false end
+    if services and services.InSpecialControlState and services.InSpecialControlState() then
+        return false, "vehicle / special control"
+    end
+    if services and services.ShouldAutomate and not services.ShouldAutomate() then
+        return false, "automation paused"
+    end
     -- Equipping mid-turn-in is bag manipulation during a taint-sensitive chain; the
     -- container engine already stands down for exactly this and this path listens to the
     -- same BAG_UPDATE_DELAYED that fires as quest rewards land.
     local safety = GetSafety()
-    if safety and safety.IsBusy and safety.IsBusy() then return false end
+    if safety and safety.IsBusy and safety.IsBusy() then return false, "quest automation busy" end
     return true
 end
 
@@ -845,6 +981,10 @@ function GearAdvisor.EquipRec(rec, manual)
     if not rec.bound and not manual then return false end
     local slot = ResolveSlot(rec)
     if not slot then return false end
+    -- Already on the character: the scan behind this recommendation can predate the equip that
+    -- satisfied it. Firing again would raise a confirmation for an item that has left the bags,
+    -- and the batch would then sit waiting for an answer that never comes.
+    if GetInventoryItemID("player", slot) == rec.id then return false end
     if UniqueConflict(rec.link, slot) then return false end  -- can't wear a second copy
     -- Taking the off-hand off is a second, unscored change to the player's gear. Pawn
     -- rated the main hand alone, so we cannot claim this is an upgrade — and silently
@@ -855,39 +995,80 @@ function GearAdvisor.EquipRec(rec, manual)
         return false
     end
     DoEquip(rec.link, slot)
+    -- An unbound item is not on the character when this returns — it has only asked. Record
+    -- the question so the next pass can read the answer off the slot instead of asking again.
+    if not rec.bound then bindAsked = { rec = rec, slot = slot } end
     return true
 end
 
+-- Come back to the rest of the batch shortly — the same wait whether equipping is blocked
+-- outright or the batch is holding for a soulbind answer. progress=true restarts the clock:
+-- the window exists to drop a batch nothing is happening to, and an item just went in.
+local function DeferEquipAll(manual, progress)
+    -- Bound the wait. This retries itself every 2s with no cap, so a blocker that
+    -- never clears (advisor switched off, a long vehicle sequence) left a deferred
+    -- equip armed indefinitely — and the recommendations it would apply go stale.
+    local now = GetTime()
+    if progress or not pendingEquip then pendingDeadline = now + PENDING_EQUIP_WINDOW end
+    if now > pendingDeadline then
+        pendingEquip = false
+        return
+    end
+    pendingEquip  = true
+    pendingManual = manual and true or false  -- preserve player-clicked intent across the wait
+    frame:RegisterEvent("PLAYER_REGEN_ENABLED")  -- retry after combat
+    -- Combat may not be the only blocker (vehicle / dead / modifier held / a popup awaiting
+    -- an answer), and PLAYER_REGEN_ENABLED won't fire again once out of combat, so also poll.
+    local services = GetServices()
+    if services and services.ScheduleOnce then
+        services.ScheduleOnce("gear_advisor_equip_retry", 2, function()
+            if pendingEquip then GearAdvisor.EquipAll(pendingManual) end
+        end)
+    end
+end
+
 function GearAdvisor.EquipAll(manual)
-    if not CanEquipNow() then
-        -- Bound the wait. This retries itself every 2s with no cap, so a blocker that
-        -- never clears (advisor switched off, a long vehicle sequence) left a deferred
-        -- equip armed indefinitely — and the recommendations it would apply go stale.
-        local now = GetTime()
-        if not pendingEquip then pendingDeadline = now + PENDING_EQUIP_WINDOW end
-        if now > pendingDeadline then
-            pendingEquip = false
-            return
-        end
-        pendingEquip  = true
-        pendingManual = manual and true or false  -- preserve player-clicked intent across the wait
-        frame:RegisterEvent("PLAYER_REGEN_ENABLED")  -- retry after combat
-        -- Combat may not be the only blocker (vehicle / dead / modifier held), and
-        -- PLAYER_REGEN_ENABLED won't fire again once out of combat, so also poll.
-        local services = GetServices()
-        if services and services.ScheduleOnce then
-            services.ScheduleOnce("gear_advisor_equip_retry", 2, function()
-                if pendingEquip then GearAdvisor.EquipAll(pendingManual) end
-            end)
-        end
+    local can, why = CanEquipNow()
+    if not can then
+        Debug("equip batch waiting: " .. (why or "?"))
+        DeferEquipAll(manual)
         return
     end
     pendingEquip = false
     pendingDeadline = 0
+
+    -- Read the answer to the confirmation raised last pass. It has been answered: a live popup
+    -- fails CanEquipNow above, so reaching here means it is gone — and the destination slot is
+    -- the answer. A no takes that item out of the batch for the session, because re-firing it
+    -- is how one "no" becomes the same popup every two seconds. The rest of the gear still
+    -- goes on: declining one piece is not a decision about the others.
+    if bindAsked then
+        local asked = bindAsked
+        bindAsked = nil
+        if GetInventoryItemID("player", asked.slot) ~= asked.rec.id then
+            Debug("soulbind declined: " .. tostring(asked.rec.link))
+            tempIgnore[asked.rec.id] = true
+            RemoveRec(asked.rec.id)
+        end
+    end
+
+    -- Bound gear first, in full. It raises no confirmation, so it must not queue up behind a
+    -- popup the player is still reading — waiting on that is what made "Equip All" look like
+    -- it had done nothing.
     local equipped = {}
     for _, rec in pairs(recommendations) do
-        if GearAdvisor.EquipRec(rec, manual) then
+        if rec.bound and GearAdvisor.EquipRec(rec, manual) then
             equipped[#equipped + 1] = rec
+        end
+    end
+
+    -- Then at most ONE soulbind confirmation, because a second cancels the first. Asked is not
+    -- equipped, so it is deliberately absent from the summary below — the popup names it
+    -- anyway. The remaining items resume when the answer lands.
+    for _, rec in pairs(recommendations) do
+        if not rec.bound and GearAdvisor.EquipRec(rec, manual) then
+            DeferEquipAll(manual, true)
+            break
         end
     end
 
@@ -984,7 +1165,9 @@ function GearAdvisor.Diagnose()
         end
         if not anyVisible then p("  |cffffaa00no visible Pawn scale — scoring by item level; create one in Pawn for stat-aware picks|r") end
     else
-        p("  |cffffaa00PawnCommon.Scales unavailable (Pawn not loaded?) — scoring by item level|r")
+        local cwDiag = GetClassWeights()
+        p("  |cffffaa00PawnCommon.Scales unavailable (Pawn not loaded?) — scoring by "
+            .. ((cwDiag and cwDiag.IsActive()) and "class weights" or "item level") .. "|r")
     end
 
     local mh = GetInventoryItemLink("player", 16)
@@ -996,6 +1179,12 @@ function GearAdvisor.Diagnose()
     -- Resolved once, exactly as the scan does it, so the verdicts below are the ones the
     -- engine would actually reach rather than a second opinion computed a different way.
     local relevant = ps and ps.RelevantScales(activeIdx)
+    local cw = GetClassWeights()
+    local classStats = not relevant and cw and cw.IsActive()
+    if classStats then
+        p(("scoring by class weights — role: %s  (change it in the Gear tab or with /jq gear role; /jq gear stats shows the math)")
+            :format(cw.RoleLabel(cw.GetRole())))
+    end
 
     local found = false
     for bag = 0, (NUM_BAG_SLOTS or 4) do
@@ -1010,6 +1199,9 @@ function GearAdvisor.Diagnose()
                     local r
                     if relevant then
                         r = ps.ScoreItem(link, activeIdx, relevant)
+                    elseif classStats then
+                        local slots = ComparableSlots(invType)
+                        r = cw.CompareToEquipped(link, slots, DisplacedOffHand(invType, slots[1]))
                     else
                         r = ScoreByItemLevel(link, invType)
                     end
@@ -1017,7 +1209,14 @@ function GearAdvisor.Diagnose()
                     -- ratio, so it reads the same whether the baseline is comparable or
                     -- scores near zero. Only the levels show which one you're looking at.
                     local verdict = "nil"
-                    if r then
+                    if r and r.byClassStats then
+                        local slots = ComparableSlots(invType)
+                        verdict = ("[class stats] upgrade=%s pct=%.2f score=%.1f vs %s"):format(
+                            tostring(r.isUpgrade), r.pawnPercentUpgrade or 0,
+                            cw.Score(link, slots[1]) or -1,
+                            r.existingItemLink and ("%.1f"):format(cw.Score(r.existingItemLink, slots[1]) or -1)
+                                or "empty slot")
+                    elseif r then
                         verdict = ("%supgrade=%s pct=%.2f ilvl=%s vs %s"):format(
                             r.byItemLevel and "[item level] " or "",
                             tostring(r.isUpgrade), r.pawnPercentUpgrade or 0,
@@ -1040,6 +1239,8 @@ function GearAdvisor.Diagnose()
     local n = 0
     for _ in pairs(recommendations) do n = n + 1 end
     p("current recommendations: " .. n)
+    p("last completed scan: " .. (lastScanNote
+        or "|cffff6666none since reload — the background scan is failing (turn on /jq debug for the error)|r"))
 end
 
 -- ============================================================
@@ -1063,18 +1264,24 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 frame:RegisterEvent("BAG_UPDATE_DELAYED")
 frame:RegisterEvent("PLAYER_LEVEL_UP")
+frame:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE")
+-- Talent-change events differ between clients; register whichever exist.
+for _, event in ipairs({ "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE" }) do
+    pcall(frame.RegisterEvent, frame, event)
+end
 frame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_LOGIN" then
-        if Enabled() then ScheduleScan(true) end
+        -- Auto-equip applies to what you logged in carrying, not only to what you loot next.
+        if Enabled() then ScanThenMaybeEquip(true) end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- Arrived. If a travel item brought us here it has done its job, so end the hold: now is
         -- when "you're still wearing the teleport cloak" is worth saying. Forced because the trip
         -- is what changed, not the bags. A blocked auto-equip is already retrying on its own.
         holdUntil = 0
-        if Enabled() then ScheduleScan(true) end
+        if Enabled() then ScanThenMaybeEquip(true) end
 
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         -- Prompt (and, in auto-equip mode, equip) the best gear for the new spec. Forced:
@@ -1104,6 +1311,22 @@ frame:SetScript("OnEvent", function(_, event, arg1)
         -- and the bags haven't moved — so drop the cache and force past the fingerprint.
         setItemIDs = nil
         if Enabled() then ScheduleScan(true) end
+
+    elseif event == "LEARNED_SPELL_IN_SKILL_LINE" then
+        -- Trainers teach what you can wear on Forever: Mail / Plate Mail at 40, Dual Wield,
+        -- weapon types. The bags haven't changed, so drop the verdicts and force the scan, or
+        -- the gear that just became wearable stays hidden. On retail it is a cheap rescan.
+        wipe(usableCache)
+        local cw = GetClassWeights()
+        if cw then cw.Invalidate() end  -- a new talent / racial can change weapon-type bonuses
+        if Enabled() then ScanThenMaybeEquip(true) end
+
+    elseif event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_TALENT_UPDATE" then
+        -- Talents changed: weapon-type bonuses (Two-Handed Weapon Specialization, Weapon
+        -- Mastery...) may have come or gone.
+        local cw = GetClassWeights()
+        if cw then cw.Invalidate() end
+        if Enabled() then ScanThenMaybeEquip(true) end
 
     elseif event == "PLAYER_LEVEL_UP" then
         -- Gear held back for being over-level can become wearable here, and the bags

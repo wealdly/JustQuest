@@ -499,6 +499,13 @@ local function ShouldShowQuickExitButton()
         return false
     end
 
+    -- The exit flow drives the group finder's own frames. Some clients never load them
+    -- (WoW Forever excludes the group finder outright), and there the button could only
+    -- fail on click. Not load-on-demand on retail, so absent here means absent for good.
+    if not (PVEFrame and LFGListFrame) then
+        return false
+    end
+
     local inInstance, instanceType = IsInInstance()
     if not inInstance then
         return false

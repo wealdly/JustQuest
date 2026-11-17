@@ -2,6 +2,16 @@
 
 local ADDON_NAME, JustQuest = ...
 
+-- Namespaced APIs first. The bare GetSpecialization / GetSpecializationInfo globals are only
+-- compatibility shims (Blizzard_DeprecatedSpecialization), and that addon does NOT load on WoW
+-- Forever ("AllowLoadGameType: classic, standard") — calling the bare name there throws.
+local GetSpecialization     = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+
+-- C_Item first: the bare item globals are compatibility shims, not guaranteed on every client.
+local GetItemInfo  = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+local IsUsableItem = (C_Item and C_Item.IsUsableItem) or IsUsableItem
+
 local GameData = {}
 
 -- ============================================================
@@ -199,6 +209,11 @@ function GameData.GetCurrentEquippedLevel(equipSlot)
         return GameData.GetEquippedItemLevel(slots)
     end
     
+    -- A one-hander only competes with the main hand unless the off-hand can take it.
+    if equipSlot == "INVTYPE_WEAPON" and not GameData.OneHanderFitsOffHand() then
+        return GameData.GetEquippedItemLevel(16)
+    end
+
     -- Handle multiple slots (rings, trinkets) - get lowest
     if type(slots) == "table" then
         local lowest = nil
@@ -313,10 +328,7 @@ end
 -- The nil is meaningful: a caller that caches a verdict must not record one built from
 -- missing data. Every tooltip read goes through here so the surfacing rules — which have
 -- moved more than once — live in exactly one place.
-function GameData.TooltipLines(itemLink)
-    if not (itemLink and C_TooltipInfo and C_TooltipInfo.GetHyperlink) then return nil end
-
-    local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+local function SurfacedLines(ok, data)
     if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return nil end
 
     -- Older shapes need the args surfaced before the fields are readable.
@@ -326,6 +338,19 @@ function GameData.TooltipLines(itemLink)
     end
 
     return data.lines
+end
+
+function GameData.TooltipLines(itemLink)
+    if not (itemLink and C_TooltipInfo and C_TooltipInfo.GetHyperlink) then return nil end
+    return SurfacedLines(pcall(C_TooltipInfo.GetHyperlink, itemLink))
+end
+
+-- Same, for the item actually sitting in a bag slot. Not interchangeable with the hyperlink
+-- call: only this one reflects per-instance state, so a lockbox whose lock has already been
+-- picked stops reading as locked.
+function GameData.BagTooltipLines(bagID, slotID)
+    if not (bagID and slotID and C_TooltipInfo and C_TooltipInfo.GetBagItem) then return nil end
+    return SurfacedLines(pcall(C_TooltipInfo.GetBagItem, bagID, slotID))
 end
 
 -- Everything that stops the player using an item. Required level is checked directly
@@ -339,17 +364,48 @@ function GameData.ItemFailsARequirement(itemLink)
     local minLevel = select(5, C_Item.GetItemInfo(itemLink))
     if minLevel and minLevel > (UnitLevel("player") or 0) then return true end
 
+    if GameData.LacksProficiency(itemLink) then return true end
+
     local lines = GameData.TooltipLines(itemLink)
     if not lines then return false end
 
-    for _, line in ipairs(lines) do
-        local c = line.leftColor
+    -- Both columns: the weapon / armour type a character can't use is the RIGHT-hand text of
+    -- the slot line ("Ranged ... Bow"), and reading only the left let unusable bows through.
+    local function IsRed(c)
         -- RED_FONT_COLOR is (1, 0.125, 0.125); compare loosely rather than exactly.
-        if c and c.r and c.g and c.b and c.r > 0.9 and c.g < 0.2 and c.b < 0.2 then
-            return true
-        end
+        return c and c.r and c.g and c.b and c.r > 0.9 and c.g < 0.2 and c.b < 0.2
+    end
+    for _, line in ipairs(lines) do
+        if IsRed(line.leftColor) or IsRed(line.rightColor) then return true end
     end
     return false
+end
+
+-- WoW Forever trains weapon and armour skills, vanilla-style: a warrior can't fire a bow until a
+-- weapon master teaches Bows, a hunter can't wear mail until 40. The proficiency spells are the
+-- game's own record, so the answer is IsPlayerSpell on the one for the item's type.
+-- [item subclass] = proficiency spell, verified in Forever's SpellName / SkillLineAbility
+-- (build 1.60.1.70245). Not used on retail, which has no trained weapon skills.
+local WEAPON_PROFICIENCY = {
+    [0] = 196, [1] = 197, [2] = 264, [3] = 266, [4] = 198, [5] = 199, [6] = 200, [7] = 201,
+    [8] = 202, [10] = 227, [13] = 15590, [15] = 1180, [16] = 2567, [18] = 5011, [19] = 5009,
+}  -- axes, bows, guns, maces, polearms, swords, staves, fist, daggers, thrown, crossbows, wands
+local ARMOR_PROFICIENCY = { [1] = 9078, [2] = 9077, [3] = 8737, [4] = 750, [6] = 9116 }
+local CLOTH_PROFICIENCY = 9078  -- every Forever class knows it (class mask 1503)
+
+function GameData.LacksProficiency(itemLink)
+    if not (itemLink and JustQuest.Constants.IS_FOREVER and IsPlayerSpell) then return false end
+    -- Every class knows Cloth. If it reads as unknown, this client isn't reporting passive
+    -- proficiencies at all — and hiding every weapon on the strength of that would be far worse
+    -- than the occasional unusable bow, so the check stands down.
+    if not IsPlayerSpell(CLOTH_PROFICIENCY) then return false end
+
+    local ok, _, _, _, _, _, classID, subclassID = pcall(C_Item.GetItemInfoInstant, itemLink)
+    if not ok then return false end
+    local IC = JustQuest.Constants.ITEM_CLASS
+    local spell = (classID == IC.WEAPON and WEAPON_PROFICIENCY[subclassID])
+               or (classID == IC.ARMOR and ARMOR_PROFICIENCY[subclassID])
+    return spell and not IsPlayerSpell(spell) or false
 end
 
 -- The armour type each class is meant to wear. Proficiency is NOT the same question:
@@ -391,6 +447,12 @@ local ARMOR_TYPED_SLOTS = {
 -- silently hides every upgrade the player owns.
 function GameData.ItemIsWrongArmorType(itemLink)
     if not itemLink then return false end
+    -- Not a rule on WoW Forever. Retail's reason for it — the armour-specialization bonus for
+    -- wearing your own type — doesn't exist in vanilla, where a warrior in leather bracers is
+    -- just a warrior with bracers. There the class-weight score decides, and it already counts
+    -- armour, so heavier pieces win on their own when stats are equal. (Gating here hid a
+    -- 29-armour pair of bracers from a warrior wearing 4-armour cloth ones.)
+    if JustQuest.Constants.IS_FOREVER then return false end
 
     local ok, _, _, _, invType, _, classID, subclassID = pcall(C_Item.GetItemInfoInstant, itemLink)
     if not ok then return false end
@@ -401,6 +463,69 @@ function GameData.ItemIsWrongArmorType(itemLink)
     if not want then return false end
 
     return subclassID ~= want
+end
+
+-- An armour item's armour value, read off its tooltip ("29 Armor") — GetItemStats doesn't carry
+-- base armour, and returns nothing at all for an item with no other stats. nil when the tooltip
+-- isn't available yet; 0 when there's no armour line.
+local ARMOR_PATTERN  -- built on first use from the localized "%s Armor" template
+function GameData.ItemArmor(itemLink)
+    local lines = GameData.TooltipLines(itemLink)
+    if not lines then return nil end
+    if not ARMOR_PATTERN then
+        local template = ARMOR_TEMPLATE or "%s Armor"
+        ARMOR_PATTERN = "^" .. template:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+                                       :gsub("%%[sd]", "([%%d,%%.]+)") .. "$"
+    end
+    for _, line in ipairs(lines) do
+        local text = line and line.leftText
+        local value = text and text:match(ARMOR_PATTERN)
+        if value then return tonumber((value:gsub("[,%.]", ""))) or 0 end
+    end
+    return 0
+end
+
+-- Whether a one-handed weapon competes for the off-hand slot at all. Only for a character who
+-- can dual wield, and only against another weapon or an empty hand: a shield or held-in-off-hand
+-- item is a different kind of gear, not a weaker weapon. Without this a caster was offered a
+-- mace for their off-hand frill (an equip that fails), and a tank a sword for their shield.
+-- Profession tools that happen to be weapons. They have weapon damage, so a damage scorer rates
+-- the Mining Pick above a starting sword — but equipping one is never the point of carrying it.
+-- Two signals: the "Miscellaneous" weapon subclass, which on WoW Forever holds exactly the four
+-- basic tools (every other item in it is an NPC display model), and fishing poles; plus the
+-- upgraded tools Blizzard filed under real weapon types, by ID (WoW Forever DB2: weapons with a
+-- TotemCategoryID outside the Miscellaneous subclass, build 1.60.1.70205).
+local TOOL_WEAPONS = {
+    [6206]   = true,  -- Rock Chipper
+    [269716] = true,  -- Keen Skinning Knife
+    [285280] = true,  -- Mithril Blacksmith Hammer
+    [285281] = true,  -- Arcanite Blacksmith Hammer
+}
+
+function GameData.IsProfessionTool(itemLink)
+    if not itemLink then return false end
+    local ok, itemID, _, _, _, _, classID, subclassID = pcall(C_Item.GetItemInfoInstant, itemLink)
+    if not ok or classID ~= JustQuest.Constants.ITEM_CLASS.WEAPON then return false end
+    local WS = JustQuest.Constants.WEAPON_SUBCLASS
+    return subclassID == WS.GENERIC or subclassID == WS.FISHING_POLE or TOOL_WEAPONS[itemID] or false
+end
+
+-- The inventory slots an item of this equip location can replace, as a list (EQUIPMENT_SLOTS
+-- mixes numbers and lists), with the one-hander rule below applied. nil for unknown locations.
+function GameData.ComparableSlots(equipSlot)
+    local slots = equipSlot and JustQuest.Constants.EQUIPMENT_SLOTS[equipSlot]
+    if not slots then return nil end
+    if type(slots) == "number" then return { slots } end
+    if equipSlot == "INVTYPE_WEAPON" and not GameData.OneHanderFitsOffHand() then return { 16 } end
+    return slots
+end
+
+function GameData.OneHanderFitsOffHand()
+    if not (CanDualWield and CanDualWield()) then return false end
+    local off = GetInventoryItemLink("player", 17)
+    if not off then return true end
+    local ok, _, _, _, _, _, classID = pcall(C_Item.GetItemInfoInstant, off)
+    return ok and classID == JustQuest.Constants.ITEM_CLASS.WEAPON
 end
 
 -- The item stat each primary stat is named by. Built on first use: the LE_UNIT_STAT globals
@@ -425,34 +550,57 @@ end
 -- Every unknown answers false, and so does an item with NO primary stat at all — cloaks,
 -- necks and rings often have none, and filtering those would hide gear every spec wears. The
 -- failure direction has to be "don't filter": a wrong verdict here hides real upgrades.
+-- The spec's primary stat as an ITEM_MOD key, or nil when there's no answer: no spec chosen yet,
+-- or a spec without one (every Forever spec: ChrSpecialization.PrimaryStatPriority = 0).
+local function SpecPrimaryStatKey()
+    local specIndex = GetSpecialization and GetSpecialization()
+    if not specIndex then return nil end
+    local getInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
+                    or GetSpecializationInfo
+    if not getInfo then return nil end
+    -- primaryStat is Nilable, and 0 for a spec that has none.
+    local ok, _, _, _, _, _, primaryStat = pcall(getInfo, specIndex)
+    if not (ok and primaryStat and primaryStat ~= 0) then return nil end
+    return PrimaryStatKey()[primaryStat]
+end
+
+-- Forever: no spec names a primary stat, and vanilla's hybrids genuinely use several, so the
+-- question goes to the class — and only for the classes with an unambiguous answer. Paladins,
+-- shamans, druids and hunters stay open. Built on first use, like PrimaryStatKey.
+local FOREVER_OFF_STATS
+local function ForeverOffStats()
+    if FOREVER_OFF_STATS then return FOREVER_OFF_STATS end
+    local STR, AGI, INT = "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_INTELLECT_SHORT"
+    FOREVER_OFF_STATS = {
+        WARRIOR = { [INT] = true }, ROGUE = { [INT] = true },
+        MAGE = { [STR] = true, [AGI] = true }, PRIEST = { [STR] = true, [AGI] = true },
+        WARLOCK = { [STR] = true, [AGI] = true },
+    }
+    return FOREVER_OFF_STATS
+end
+
 function GameData.ItemIsWrongPrimaryStat(itemLink)
     if not itemLink then return false end
 
-    -- No spec chosen yet (levelling, before the class picks one) means no opinion to have.
-    local specIndex = GetSpecialization and GetSpecialization()
-    if not specIndex then return false end
-
-    local getInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
-                    or GetSpecializationInfo
-    if not getInfo then return false end
-    -- primaryStat is Nilable, and 0 for a spec that has none.
-    local ok, _, _, _, _, _, primaryStat = pcall(getInfo, specIndex)
-    if not (ok and primaryStat and primaryStat ~= 0) then return false end
-
-    local want = PrimaryStatKey()[primaryStat]
-    if not want then return false end
+    local want = SpecPrimaryStatKey()
+    local offStats = not want and JustQuest.Constants.IS_FOREVER
+                     and ForeverOffStats()[GameData.GetPlayerClass()]
+    if not (want or offStats) then return false end  -- no opinion to have
 
     local okStats, stats = pcall(C_Item.GetItemStats, itemLink)
     if not (okStats and type(stats) == "table") then return false end  -- not cached yet
 
-    if stats[want] then return false end  -- carries ours; nothing to say
-
-    -- Only wrong if it actually carries one of the OTHER primary stats. An item with none
-    -- reaches here too, and must pass.
+    -- Wrong only if it carries a primary stat that isn't ours AND none that is. An item with
+    -- no primary stat at all (cloaks, necks, rings) must pass, and so must a mixed one.
+    local carriesOurs, carriesOther = false, false
     for _, key in pairs(PrimaryStatKey()) do
-        if key ~= want and stats[key] then return true end
+        if stats[key] then
+            local ours
+            if want then ours = key == want else ours = not offStats[key] end
+            if ours then carriesOurs = true else carriesOther = true end
+        end
     end
-    return false
+    return carriesOther and not carriesOurs
 end
 
 function GameData.CanPlayerUseItem(itemLink)

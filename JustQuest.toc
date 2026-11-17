@@ -25,6 +25,7 @@ Services\Services.lua
 Services\GameData.lua
 Services\PawnScoring.lua
 Services\PawnStatInjection.lua
+Services\ClassWeights.lua
 
 # Database Tables
 Database\BlockedContent.lua

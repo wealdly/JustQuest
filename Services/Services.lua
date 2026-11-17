@@ -63,7 +63,7 @@ end
 -- container_periodic_scan), the post-automation container scans, and the LFG
 -- subsystem — those must keep running across a teardown.
 local AUTOMATION_TIMERS = {
-    "content_repump", "gossip_show", "quest_greeting",
+    "content_repump",
     "quest_processing_timeout", "deferred_onquestlog_update",
     "reward_data_retry", "reward_select_fallback",
     "state_recovery_resume",
@@ -161,7 +161,8 @@ function Services.Debug(module, msg)
         out = out:sub(1, MAX_LEN - 3) .. "..."
     end
 
-    print("|cff00ccffJQ " .. (module or "Core") .. ":|r " .. out)
+    -- Timestamped (seconds, mod 1000) so step-to-step gaps can be read straight off the log.
+    print(string.format("|cff00ccffJQ %.2f %s:|r %s", GetTime() % 1000, module or "Core", out))
 end
 
 -- Direct answers to something the player did — a slash command, a button. Automation itself
@@ -370,7 +371,7 @@ local function FastModeSuppressFrame(frame)
     -- runs — nothing could un-hide what this hid, leaving a shown-but-invisible frame
     -- clearable only by walking out of range.
     if not Services.IsAutomationEnabled() then return end
-    if IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown() then return end
+    if not Services.ShouldAutomate() then return end  -- modifier held, or a manual conversation
     if Services.HasInterferingFrame() then return end
 
     -- Hide for quest mobs (offer / turn-in / quest-flagged gossip) and for pure
@@ -390,14 +391,94 @@ local function FastModeSuppressFrame(frame)
     frame:SetAlpha(0)
 end
 
-function Services.SetupFastModeHooks()
-    if QuestFrame and not QuestFrame._jqFastHooked then
-        QuestFrame:HookScript("OnShow", FastModeSuppressFrame)
-        QuestFrame._jqFastHooked = true
+-- ============================================================
+-- Manual conversation (modifier held when the NPC dialog opened)
+-- ============================================================
+-- A modifier held as a conversation OPENS hands the whole conversation to the player — gossip,
+-- the quest it leads to, the reward — not just the events that happen to arrive while the key
+-- is still down. Releasing the key mid-conversation no longer lets a late event (item data
+-- loading, a repump) take over a window the player opened to read. Re-talking to the NPC
+-- without the modifier starts automation again.
+--
+-- The boundary is the quest/gossip frames: a conversation hops between them (gossip -> quest
+-- detail -> gossip) with at most one server round-trip where neither is shown, so a new one
+-- starts only when they reopen after a longer gap than that. The gossip -> quest hop doesn't
+-- need the guess: the server flags it (GOSSIP_CLOSED interactionIsContinuing, the same signal
+-- GossipFrame keys its own teardown on), and a flagged close bridges any gap.
+-- ponytail: the quest -> gossip hop (after a turn-in) still rides the time gap; a >1s lag
+-- spike there reads as a new conversation. The interaction-event log below exists to find a
+-- server signal for that leg too.
+local REINTERACT_GAP = 1.0
+-- How long a server-flagged "continuing" close keeps bridging. Bounded so a flag whose next
+-- dialog never comes (the NPC handed off to a vendor) can't latch onto a later conversation.
+local CONTINUING_BRIDGE = 5.0
+local dialogContinuingUntil = 0
+-- The click lands a server round-trip before the frame shows, so a modifier released inside
+-- that window was still held at the click.
+-- ponytail: fixed window; a modifier tapped for something else just before a plain click
+-- also reads as manual. Ceiling accepted — the cost is one conversation done by hand.
+local MODIFIER_GRACE = 0.5
+local manualConversation = false
+local dialogClosedAt = 0
+local modifierUpAt = 0
+
+local function ModifierHeld()
+    return IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
+end
+
+function Services.NoteModifierReleased()
+    modifierUpAt = GetTime()
+end
+
+-- GossipEngine.OnGossipClosed reports the server's "this conversation continues" flag here.
+function Services.NoteDialogContinuing()
+    dialogContinuingUntil = GetTime() + CONTINUING_BRIDGE
+end
+
+-- True while a flagged close is waiting for its next dialog (the dispatch poll rides it out).
+function Services.IsDialogContinuing()
+    return GetTime() < dialogContinuingUntil
+end
+
+local function DialogFrameShown()
+    return (QuestFrame and QuestFrame:IsShown()) or (GossipFrame and GossipFrame:IsShown()) or false
+end
+
+local function OnDialogFrameShow(frame)
+    local other = (frame == QuestFrame) and GossipFrame or QuestFrame
+    local continuing = (other and other:IsShown()) or (GetTime() - dialogClosedAt) < REINTERACT_GAP
+                       or Services.IsDialogContinuing()
+    dialogContinuingUntil = 0  -- consumed by the dialog it was bridging to
+    if ModifierHeld() or (GetTime() - modifierUpAt) < MODIFIER_GRACE then
+        if not manualConversation then Services.Debug("Services", "Modifier at open - conversation is manual") end
+        manualConversation = true
+    elseif not continuing then
+        manualConversation = false
     end
-    if GossipFrame and not GossipFrame._jqFastHooked then
-        GossipFrame:HookScript("OnShow", FastModeSuppressFrame)
-        GossipFrame._jqFastHooked = true
+    FastModeSuppressFrame(frame)
+end
+
+local function OnDialogFrameHide()
+    if not DialogFrameShown() then dialogClosedAt = GetTime() end
+end
+
+-- Seconds since the last quest/gossip window closed; 0 while one is open.
+function Services.DialogClosedFor()
+    if DialogFrameShown() then return 0 end
+    return GetTime() - dialogClosedAt
+end
+
+function Services.IsManualConversation()
+    return manualConversation and DialogFrameShown()
+end
+
+function Services.SetupFastModeHooks()
+    for _, frame in ipairs({ QuestFrame, GossipFrame }) do
+        if frame and not frame._jqFastHooked then
+            frame:HookScript("OnShow", OnDialogFrameShow)
+            frame:HookScript("OnHide", OnDialogFrameHide)
+            frame._jqFastHooked = true
+        end
     end
 end
 
@@ -410,19 +491,109 @@ function Services.RestoreAutomationFrames()
     if PlayerChoiceFrame then PlayerChoiceFrame:SetAlpha(1) end
 end
 
+-- ============================================================
+-- Typed NPC interactions (PLAYER_INTERACTION_MANAGER_FRAME_SHOW / _HIDE)
+-- ============================================================
+-- The server names every NPC interaction it opens (Merchant, Trainer, TaxiNode, Banker, ...).
+-- Blizzard's own PlayerInteractionFrameManager opens and closes those service frames off
+-- exactly these two events, so the set below is as reliable as the frames themselves — and it
+-- also covers service UIs the hand-kept INTERFERING_FRAMES list doesn't name (custom frames,
+-- new interaction types). Gossip and quest-giver interactions are the ones we drive; the
+-- choice and Torghast-powers windows belong to DelveEngine. Everything else stands us down.
+local activeInteractions = {}  -- [Enum.PlayerInteractionType] = true while shown
+local interactionNames = nil   -- value -> name, built lazily for messages
+
+local function InteractionName(t)
+    if not interactionNames then
+        interactionNames = {}
+        for name, value in pairs(Enum and Enum.PlayerInteractionType or {}) do
+            interactionNames[value] = name
+        end
+    end
+    return interactionNames[t] or tostring(t)
+end
+
+local function IsDrivenInteraction(t)
+    local T = Enum and Enum.PlayerInteractionType
+    if not T then return true end
+    return t == T.None or t == T.Item or t == T.Gossip or t == T.QuestGiver
+        or t == T.PlayerChoice or t == T.JailersTowerBuffs
+end
+
+-- Name of an open service interaction that should stand automation down, or nil.
+function Services.ActiveServiceInteraction()
+    for t in pairs(activeInteractions) do
+        if not IsDrivenInteraction(t) then return "interaction:" .. InteractionName(t) end
+    end
+    return nil
+end
+
+function Services.GetActiveInteractions()
+    local names = {}
+    for t in pairs(activeInteractions) do names[#names + 1] = InteractionName(t) end
+    table.sort(names)
+    return names
+end
+
+local function OnInteractionEvent(_, event, arg1)
+    if event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
+        local T = Enum and Enum.PlayerInteractionType
+        -- A new NPC dialog means any earlier service interaction has ended (the server runs
+        -- one at a time). Clearing here bounds a missed HIDE to one conversation instead of
+        -- the rest of the session.
+        if T and (arg1 == T.Gossip or arg1 == T.QuestGiver) then wipe(activeInteractions) end
+        activeInteractions[arg1] = true
+    elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+        activeInteractions[arg1] = nil
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        wipe(activeInteractions)
+        return
+    end
+    -- Ordering log (debug only): one line per dialog / interaction event, timestamped, so a
+    -- real turn-in shows exactly what the server sends between one window and the next.
+    if JustQuest._debugMode then
+        local detail = ""
+        if event:find("^PLAYER_INTERACTION") then
+            detail = " " .. InteractionName(arg1)
+        elseif event == "GOSSIP_CLOSED" then
+            detail = " continuing=" .. tostring(arg1)
+        end
+        Services.Debug("Interact", (event:gsub("PLAYER_INTERACTION_MANAGER_", "")) .. detail)
+    end
+end
+Services._OnInteractionEvent = OnInteractionEvent  -- for tools/dialog_gate_check.lua
+
+local INTERACTION_EVENTS = {
+    "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", "PLAYER_INTERACTION_MANAGER_FRAME_HIDE",
+    "PLAYER_ENTERING_WORLD",
+    -- Logged only, for the ordering record:
+    "GOSSIP_SHOW", "GOSSIP_CLOSED", "QUEST_GREETING", "QUEST_DETAIL", "QUEST_PROGRESS",
+    "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_TURNED_IN", "QUEST_ACCEPTED",
+}
+
+local interactionFrame
+function Services.SetupInteractionListener()
+    interactionFrame = interactionFrame or CreateFrame("Frame")
+    for _, event in ipairs(INTERACTION_EVENTS) do
+        pcall(interactionFrame.RegisterEvent, interactionFrame, event)
+    end
+    interactionFrame:SetScript("OnEvent", OnInteractionEvent)
+end
+
 -- Check for non-quest/gossip NPC frames (vendor, trainer, flight map, etc.)
 -- Caches _G frame references to avoid repeated string→table lookups
 local interferingFrameRefs = nil
 
 function Services.HasInterferingFrame()
     if not interferingFrameRefs then
-        local frameNames = JustQuest.Constants.INTERFERING_FRAMES
-        if not frameNames then return nil end
         interferingFrameRefs = {}
-        for _, name in ipairs(frameNames) do
+        for _, name in ipairs(JustQuest.Constants.INTERFERING_FRAMES or {}) do
             interferingFrameRefs[#interferingFrameRefs + 1] = { name = name, ref = _G[name] or false }
         end
     end
+
+    local service = Services.ActiveServiceInteraction()
+    if service then return service end
 
     for _, entry in ipairs(interferingFrameRefs) do
         local frame = entry.ref
@@ -469,78 +640,22 @@ function Services.IsQuestRelatedGossip(option)
     return false
 end
 
-function Services.HasGossipQuests()
-    if not C_GossipInfo then 
-        return false 
-    end
-    
-    local active = C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests()
-    if type(active) == "table" and #active > 0 then 
-        return true 
-    end
-    
-    local available = C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests()
-    if type(available) == "table" and #available > 0 then
-        return true
-    end
-    
-    local options = Services.SafeCall(C_GossipInfo.GetOptions)
-    if type(options) == "table" then
-        for _, option in ipairs(options) do
-            if Services.IsQuestRelatedGossip(option) then
-                Services.Debug("Services", "Quest-related gossip detected: " .. tostring(option.name))
-                return true
-            end
-        end
-    end
-    
-    return false
-end
-
--- Check for ACTIONABLE quests (complete to turn in, or available to accept).
--- Aligned with QuestEngine visibility filters to prevent phantom routing.
+-- Is there quest work here the addon will actually do (a turn-in, an accept, or one of ours
+-- still in flight)? Delegates to QuestEngine.GetActionableQuests so routing, fast-mode hiding
+-- and the gossip gates all apply the SAME filter as the engine that acts on it. A quest that
+-- filter drops (blocked, trivial, type off, log full, not complete) does not count.
+-- Callers may pass pre-fetched lists to avoid re-querying.
 function Services.HasActionableQuestContent(active, available)
-    if not C_GossipInfo then
-        return false, "no_api"
-    end
-
-    -- Check for complete quests (can turn in). Callers may pass pre-fetched lists to
-    -- avoid re-querying; otherwise fetch here.
-    active = active or (C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests())
-    if type(active) == "table" then
-        for _, quest in ipairs(active) do
-            if quest.isComplete and quest.questID and not Services.IsQuestBlocked(quest.questID) then
-                return true, "complete_quest"
-            end
-        end
-    end
-
-    -- Check for available quests (can accept)
-    available = available or (C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests())
-    if type(available) == "table" and #available > 0 then
-        local safetyEngine = JustQuest.Core.GetModule("SafetyEngine")
-        for _, quest in ipairs(available) do
-            if quest.questID then
-                local inLog = C_QuestLog and C_QuestLog.IsOnQuest and C_QuestLog.IsOnQuest(quest.questID)
-                local completed = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(quest.questID)
-                local blocked = Services.IsQuestBlocked(quest.questID)
-                local shouldAccept = not safetyEngine or not safetyEngine.ShouldAcceptQuest
-                                     or safetyEngine.ShouldAcceptQuest(quest.questID, quest.frequency)
-                if not inLog and not completed and not blocked and shouldAccept then
-                    return true, "available_quest"
-                end
-            else
-                -- No questID to check, assume available
-                return true, "available_quest_unknown"
-            end
-        end
-    end
-
-    return false, "no_actionable"
+    local questEngine = JustQuest.Core.GetModule("QuestEngine")
+    if not (C_GossipInfo and questEngine and questEngine.GetActionableQuests) then return false end
+    local actionableActive, actionableAvailable, pending = questEngine.GetActionableQuests(active, available)
+    return #actionableActive > 0 or #actionableAvailable > 0 or pending
 end
 
+-- Scoped to the open dialog: a manual conversation pauses quest/gossip handling only while it
+-- is on screen, so containers, delve powers and the gear advisor carry on once it closes.
 function Services.ShouldAutomate()
-    return not (IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown())
+    return not (ModifierHeld() or Services.IsManualConversation())
 end
 
 function Services.IsAutomationEnabled()
@@ -656,36 +771,39 @@ end
 -- Unified Quest/Gossip Processing
 -- ============================================================
 
--- Check for actionable content via ANY API (modern or legacy)
-function Services.HasAnyActionableContent()
-    -- Fetch the modern quest lists once and share them with the filtered check.
-    local rawActive = C_GossipInfo and C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests()
-    local rawAvailable = C_GossipInfo and C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests()
+-- Check for actionable content via ANY API (modern or legacy). The quest lists may be passed
+-- in by a caller that already fetched them this tick.
+-- Routed by the window that is ACTUALLY open. Both data sources can be stale: the gossip lists
+-- after the gossip window has given way to a quest greeting, the greeting counts after a gossip
+-- NPC. Routing on stale data sent a pass down the wrong path, where it "succeeded" at nothing
+-- and ended the poll — and the real next quest was never looked at.
+function Services.HasAnyActionableContent(rawActive, rawAvailable)
+    if GossipFrame and GossipFrame:IsShown() then
+        rawActive = rawActive or Services.SafeCall(C_GossipInfo and C_GossipInfo.GetActiveQuests)
+        rawAvailable = rawAvailable or Services.SafeCall(C_GossipInfo and C_GossipInfo.GetAvailableQuests)
 
-    if Services.HasActionableQuestContent(rawActive, rawAvailable) then return true, "modern" end
+        if Services.HasActionableQuestContent(rawActive, rawAvailable) then return true, "modern" end
 
-    -- Unfiltered quest check — HasActionableQuestContent may filter all quests out
-    -- (recently accepted, log full, etc.) or data may still be loading.
-    -- Route through QuestEngine anyway for correct priority (quests before gossip).
-    if (type(rawActive) == "table" and #rawActive > 0) or
-       (type(rawAvailable) == "table" and #rawAvailable > 0) then
-        return true, "modern"
+        -- Unfiltered quest check — HasActionableQuestContent may filter all quests out
+        -- (recently accepted, log full, etc.) or data may still be loading.
+        -- Route through QuestEngine anyway for correct priority (quests before gossip).
+        if (type(rawActive) == "table" and #rawActive > 0) or
+           (type(rawAvailable) == "table" and #rawAvailable > 0) then
+            return true, "modern"
+        end
+
+        local opts = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
+        if type(opts) == "table" and #opts > 0 then return true, "gossip" end
+        return false, "none"
     end
 
-    -- Legacy API (QUEST_GREETING frame)
-    local numActive = GetNumActiveQuests and GetNumActiveQuests() or 0
-    local numAvailable = GetNumAvailableQuests and GetNumAvailableQuests() or 0
-    if numActive > 0 or numAvailable > 0 then
-        return true, "legacy"
-    end
-
-    -- Greeting frame may have data pending
+    -- Legacy quest greeting (QuestFrame greeting panel, no gossip window).
     if QuestFrameGreetingPanel and QuestFrameGreetingPanel:IsVisible() then
-        return true, "greeting_visible"
+        local numActive = GetNumActiveQuests and GetNumActiveQuests() or 0
+        local numAvailable = GetNumAvailableQuests and GetNumAvailableQuests() or 0
+        if numActive > 0 or numAvailable > 0 then return true, "legacy" end
+        return true, "greeting_visible"  -- data may still be on its way
     end
-
-    local opts = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
-    if type(opts) == "table" and #opts > 0 then return true, "gossip" end
 
     return false, "none"
 end
@@ -698,7 +816,8 @@ local FLAVOR_CLOSE_THROTTLE = 1.0
 -- Returns handled, examined. "examined" is false when we bailed before looking at the
 -- content at all (busy mid-step, interfering frame, automation gated off) — the poll
 -- below uses it to know its content fingerprint is not a verdict on that content.
-local function DispatchContent(reason)
+-- rawActive / rawAvailable: this tick's lists, fetched once by the poll and passed down.
+local function DispatchContent(reason, rawActive, rawAvailable)
     -- Use CanAutomateBase (not CanAutomate) to avoid noisy "interfering frame" messages
     -- during background repumps (e.g. MerchantFrame opening after quest turn-in)
     if not Services.CanAutomateBase() then
@@ -718,7 +837,7 @@ local function DispatchContent(reason)
         return false, false
     end
 
-    local hasContent, contentType = Services.HasAnyActionableContent()
+    local hasContent, contentType = Services.HasAnyActionableContent(rawActive, rawAvailable)
     if not hasContent then
         -- Fast mode: a gossip window that's still open with no options and no quests
         -- is pure flavor text. It was hidden on show, so close it instead of leaving
@@ -730,6 +849,20 @@ local function DispatchContent(reason)
         -- condition. One close per second per interaction is plenty for tidying up, and
         -- caps the thrash if the server disagrees with us about the menu being over.
         local config = JustQuest.Core.GetModule("Config")
+
+        -- Right after a turn-in / accept, an empty page is the NPC's next dialog arriving
+        -- before its next quest does — the follow-up typically lands within a few seconds.
+        -- Closing it as flavor (fast mode) or concluding the NPC here threw away the very
+        -- window that quest was about to appear in. Hold: report "not examined" so the poll
+        -- keeps looking every tick, and keep the hidden frame from being revealed meanwhile.
+        local sinceProgress = GetTime() - (JustQuest._lastProgressTime or 0)
+        if GossipFrame and GossipFrame:IsShown()
+           and sinceProgress < (JustQuest.Constants.TIMING.RE_PUMP_TOTAL_TIME or 3.5) then
+            Services.Debug("Services", string.format("Empty dialog %.1fs after a turn-in/accept - waiting for the next quest", sinceProgress))
+            JustQuest._lastProcessingTime = GetTime()
+            return false, false
+        end
+
         if GossipFrame and GossipFrame:IsShown() then
             -- Either way this page is a dead end — tell GossipEngine so a re-click at
             -- this NPC shows the menu immediately instead of re-running the walk.
@@ -770,8 +903,9 @@ local function DispatchContent(reason)
         if questEngine and questEngine.ProcessLegacyQuestGreeting then
             questEngine.ProcessLegacyQuestGreeting()
         end
-        -- The legacy path runs its own data poll (PollForLegacyQuestData), so report
-        -- handled either way rather than stacking a second poll on top of it.
+        -- The legacy path runs its own data poll (PollForLegacyQuestData) and re-schedules
+        -- itself past its re-entry cooldown, so report handled either way rather than
+        -- stacking a second poll on top of it.
         return true, true
     end
 
@@ -784,10 +918,13 @@ local function DispatchContent(reason)
         -- nobody listening. Every false below is a genuine "nothing done yet, look
         -- again": still BUSY, quests filtered, or the list not yet updated.
         --
-        -- Always route through QuestEngine — it makes fresh API calls and has
-        -- correct priority: complete quests > available quests > gossip delegation.
+        -- Always route through QuestEngine — correct priority: complete quests >
+        -- available quests > gossip delegation.
         if questEngine and questEngine.OnGossipShow then
-            return questEngine.OnGossipShow() and true or false, true
+            -- waiting: QuestEngine is holding for a quest still on its way; don't file this
+            -- content as judged, or the poll would never look at it again.
+            local handled, waiting = questEngine.OnGossipShow(rawActive, rawAvailable)
+            return handled and true or false, not waiting
         elseif gossipEngine and gossipEngine.OnGossipShow then
             return gossipEngine.OnGossipShow(true) and true or false, true
         end
@@ -812,59 +949,135 @@ end
 -- every pass re-ran the full quest-list walk and cycled BUSY->IDLE, which is both wasted
 -- allocation and enough state churn to keep re-arming the automation indicator so it
 -- never survived long enough to appear.
+-- Quest IDENTITY and completion, not just counts: a quest whose data fills in after the menu
+-- opened, or one that turns complete while it's open, keeps the count the same — and a
+-- count-only print read that as "nothing new" and never looked again.
+local function QuestListPrint(list)
+    if type(list) ~= "table" then return "-" end
+    local parts = {}
+    for i, quest in ipairs(list) do
+        parts[i] = tostring(quest.questID) .. (quest.isComplete and "c" or "")
+    end
+    return table.concat(parts, ",")
+end
+
+-- Returns the print plus the lists it read, so the tick's dispatch reuses them.
 local function ContentFingerprint()
     local active    = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetActiveQuests)
     local available = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetAvailableQuests)
     local options   = Services.SafeCall(C_GossipInfo and C_GossipInfo.GetOptions)
-    return string.format("%d:%d:%d",
-        type(active) == "table" and #active or -1,
-        type(available) == "table" and #available or -1,
-        type(options) == "table" and #options or -1)
+    return string.format("%s|%s|%d|%d:%d|%s%s",
+        QuestListPrint(active), QuestListPrint(available),
+        type(options) == "table" and #options or -1,
+        GetNumActiveQuests and GetNumActiveQuests() or -1,
+        GetNumAvailableQuests and GetNumAvailableQuests() or -1,
+        (GossipFrame and GossipFrame:IsShown()) and "G" or "",
+        (QuestFrame and QuestFrame:IsShown()) and "Q" or ""), active, available
 end
+Services.ContentFingerprint = ContentFingerprint
 
--- A newer event calls back through here and cancels the key, pre-empting the chain;
--- CancelAutomationTimers also stops it on teardown.
-local function ScheduleDispatch(key, delay, reason, deadline, lastPrint)
-    Services.ScheduleOnce(key, delay, function()
-        -- Unchanged content means the server has sent nothing new since the last look,
-        -- so the handler cannot reach a different decision than it just did.
-        local print_ = ContentFingerprint()
-        local examined = false
-        if print_ ~= lastPrint then
-            local handled
-            handled, examined = DispatchContent(reason)
-            if handled then return end
+-- ONE pending content pass, shared by every request (events, post-action re-checks, data
+-- loads). Requests merge: the EARLIEST due time wins and the latest deadline wins. Before,
+-- the last request replaced the pending one, so a lifecycle event landing just after the
+-- server's GOSSIP_SHOW pushed that ready-now pass out to its own longer delay.
+local DISPATCH_KEY = "content_repump"
+-- A conversation hops between frames with up to a server round-trip where none is open
+-- (quest frame closes, the NPC's next menu is still on its way). A poll that quits the
+-- instant nothing is open misses that next menu, so it rides out a gap this long.
+local FRAME_GAP = 0.5
+-- After REAL progress (a turn-in or accept) the next quest is the whole point, and it can be
+-- slow: an NPC that speaks before offering the follow-up, a laggy re-show. So those checks
+-- watch for as long as the dialog stays open (capped), and ride out a longer frame gap. The
+-- cost is one fingerprint per tick (three list reads), and an unchanged print skips the
+-- dispatch, so a long watch over an idle menu does no real work.
+local WATCH_REASONS = {
+    safety_end_processing = true,  -- QUEST_TURNED_IN (and stall recovery)
+    post_quest_accept     = true,  -- QUEST_ACCEPTED
+    lifecycle             = true,  -- QUEST_FINISHED
+}
+local pass = nil  -- { due, deadline, gap, delay, reason, lastPrint, closedSince }
+
+local function DispatchTick()
+    local st = pass
+    if not st then return end
+
+    -- Unchanged content means the server has sent nothing new since the last look,
+    -- so the handler cannot reach a different decision than it just did.
+    local print_, active, available = ContentFingerprint()
+    local examined = false
+    if print_ ~= st.lastPrint then
+        local handled
+        handled, examined = DispatchContent(st.reason, active, available)
+        if JustQuest._debugMode then
+            Services.Debug("Dispatch", string.format("%s [%s] -> %s", st.reason, print_,
+                handled and "acted" or (examined and "nothing to do" or "gated")))
         end
-        if not deadline or GetTime() >= deadline then return end
-        if not Services.IsInteractionFrameOpen() then return end
+        -- The handler may have queued a NEW pass (e.g. after a selection); that one owns
+        -- the poll now.
+        if pass ~= st then return end
+        if handled then pass = nil return end
+    end
 
-        -- Only remember this fingerprint if the content was actually examined. A pass
-        -- that bailed on a transient gate (still BUSY finishing the previous step, an
-        -- interfering frame) never judged this content — recording it anyway made every
-        -- later tick skip the dispatch as "already seen", so a quest the server delivered
-        -- mid-step was never looked at again and needed a manual re-click.
-        local maxDelay = JustQuest.Constants.TIMING.RE_PUMP_MAX_DELAY or 0.3
-        local growth   = JustQuest.Constants.TIMING.RE_PUMP_GROWTH_FACTOR or 1.4
-        ScheduleDispatch(key, math.min((delay or 0.15) * growth, maxDelay), reason, deadline,
-            examined and print_ or lastPrint)
-    end)
+    local now = GetTime()
+    if now >= st.deadline then pass = nil return end
+    if Services.IsInteractionFrameOpen() or Services.IsDialogContinuing() then
+        st.closedSince = nil
+    else
+        st.closedSince = st.closedSince or now
+        if now - st.closedSince > st.gap then pass = nil return end
+    end
+
+    -- Only remember this fingerprint if the content was actually examined. A pass
+    -- that bailed on a transient gate (still BUSY finishing the previous step, an
+    -- interfering frame) never judged this content — recording it anyway made every
+    -- later tick skip the dispatch as "already seen", so a quest the server delivered
+    -- mid-step was never looked at again and needed a manual re-click.
+    if examined then st.lastPrint = print_ end
+
+    local maxDelay = JustQuest.Constants.TIMING.RE_PUMP_MAX_DELAY or 0.3
+    local growth   = JustQuest.Constants.TIMING.RE_PUMP_GROWTH_FACTOR or 1.4
+    st.delay = math.min(st.delay * growth, maxDelay)
+    st.due = now + st.delay
+    Services.ScheduleOnce(DISPATCH_KEY, st.delay, DispatchTick)
 end
 
-local function RepumpDeadline()
-    return GetTime() + (JustQuest.Constants.TIMING.RE_PUMP_TOTAL_TIME or 1.0)
+-- seedPrint: the content as it stands right now, for a check that should only act once the
+-- server has sent something NEW. After a gossip selection the client still holds the old
+-- menu until the reply lands; an unseeded check at 0.15s re-judged that stale menu, found
+-- nothing, and concluded the NPC (and flashed the frame) before the real menu arrived.
+local function RequestDispatch(delay, reason, seedPrint)
+    local now = GetTime()
+    local due = now + (delay or 0.1)
+    local TIMING = JustQuest.Constants.TIMING
+    local watch = WATCH_REASONS[reason]
+    local deadline = now + (watch and (TIMING.RE_PUMP_WATCH_TIME or 15) or (TIMING.RE_PUMP_TOTAL_TIME or 1.0))
+    local gap = watch and (TIMING.RE_PUMP_WATCH_GAP or 2.0) or FRAME_GAP
+    local st = pass
+
+    if st and activeTimers[DISPATCH_KEY] and st.due <= due then
+        -- A pass is already coming sooner: fold this request into it.
+        st.deadline = math.max(st.deadline, deadline)
+        st.gap = math.max(st.gap, gap)
+        st.delay = math.min(st.delay, delay or 0.1)  -- fresh activity: restart quick ticks
+        st.reason = reason
+        st.closedSince = nil
+        -- A new event is content nobody has judged yet — unless it's a seeded post-action
+        -- check, which by definition wants the current content ignored.
+        if not seedPrint then st.lastPrint = nil end
+        return
+    end
+
+    -- Replacing a later-due pass still inherits its window; a cancelled one (teardown) doesn't.
+    local live = st and activeTimers[DISPATCH_KEY] and st or nil
+    pass = { due = due, deadline = math.max(deadline, live and live.deadline or 0),
+             gap = math.max(gap, live and live.gap or 0),
+             delay = delay or 0.1, reason = reason, lastPrint = seedPrint }
+    Services.ScheduleOnce(DISPATCH_KEY, delay or 0.1, DispatchTick)
 end
 
--- Unified content check scheduler — replaces all repump/trigger timer variants
-function Services.ScheduleContentCheck(delay, reason)
-    delay = delay or 0.1
-    reason = reason or "unspecified"
-
-    -- Cancel competing content-check timers
-    Services.CancelScheduled("content_repump")
-    Services.CancelScheduled("gossip_show")
-    Services.CancelScheduled("quest_greeting")
-
-    ScheduleDispatch("content_repump", delay, reason, RepumpDeadline())
+-- Unified content check scheduler — every repump / trigger goes through RequestDispatch.
+function Services.ScheduleContentCheck(delay, reason, seedPrint)
+    RequestDispatch(delay, reason or "unspecified", seedPrint)
 end
 
 -- Legacy compatibility wrapper
@@ -873,17 +1086,11 @@ function Services.PumpQuestCheck(reason, delay)
 end
 
 function Services.CoalescedGossipPass(tag, delay)
-    Services.CancelScheduled(tag)
+    RequestDispatch(delay or 0.1, "coalesced_" .. tostring(tag))
+end
 
-    Services.CancelScheduled("content_repump")
-    if tag ~= "gossip_show" then
-        Services.CancelScheduled("gossip_show")
-    end
-    if tag ~= "quest_greeting" then
-        Services.CancelScheduled("quest_greeting")
-    end
-
-    ScheduleDispatch(tag, delay or 0.1, "coalesced_" .. tag, RepumpDeadline())
+function Services.IsScheduled(key)
+    return activeTimers[SanitizeKey(key)] ~= nil
 end
 
 -- ============================================================
@@ -1023,6 +1230,7 @@ function Services.Initialize()
     local enabled = config and (config.IsDebugMode and config.IsDebugMode() or config.Get(nil, "debugMode")) or false
     Services.SetDebugMode(enabled)
     Services.SetupFastModeHooks()
+    Services.SetupInteractionListener()
 end
 
 function Services.OnDisable()

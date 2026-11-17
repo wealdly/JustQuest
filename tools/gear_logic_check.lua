@@ -224,6 +224,80 @@ check("empty second ring offered",    pct(ScoreByItemLevel(50,  {200, 0})), NO_B
 check("uncached candidate no verdict", pct(ScoreByItemLevel(nil, {100})), nil)
 check("uncached equipped no verdict",  pct(ScoreByItemLevel(120, {false})), nil)
 
+-- ============================================================
+-- Batch equipping around soulbind confirmations
+-- ============================================================
+-- The client's bind popup is exclusive and its OnHide cancels the equip underneath, so asking
+-- about a second item throws the first away. The batch must therefore stop at each unbound item,
+-- must not count it as equipped, and must not re-ask an item the player declined.
+
+-- EquipAll's body, with `worn` standing in for the character and `dropped` for the
+-- session skip-list. Returns what the summary would announce, and what it asked about.
+local function EquipAll(recs, worn, asked, dropped)
+    dropped = dropped or {}
+
+    -- The answer to last pass's confirmation, read off the destination slot.
+    if asked and worn[asked.slot] ~= asked.id then
+        dropped[asked.id] = true          -- declined: out of the batch, not re-fired
+    end
+
+    local equipped, askedNow = {}, nil
+    local function fire(rec)              -- EquipRec's refusals, in order
+        if dropped[rec.id] then return false end
+        if worn[rec.slot] == rec.id then return false end   -- already on the character
+        return true
+    end
+
+    for _, rec in ipairs(recs) do         -- bound gear first, in full
+        if rec.bound and fire(rec) then
+            worn[rec.slot] = rec.id
+            equipped[#equipped + 1] = rec
+        end
+    end
+    for _, rec in ipairs(recs) do         -- then at most one confirmation
+        if not rec.bound and fire(rec) then
+            askedNow = rec
+            break
+        end
+    end
+    return equipped, askedNow, dropped
+end
+
+local BOUND = { slot = 5,  id = 111, bound = true }
+local BOE   = { slot = 11, id = 222, bound = false }
+local BOE2  = { slot = 12, id = 333, bound = false }
+
+-- Two bind-on-equip pieces: exactly one question, and asking is not equipping.
+local equipped, askedNow = EquipAll({ BOE, BOE2 }, {})
+check("one confirmation at a time",     askedNow, BOE)
+check("an ask is not an equip",         #equipped, 0)
+
+-- Bound gear needs no answer, so it goes on in the same pass rather than waiting behind
+-- the popup — and it goes on even when the BoE is first in the list.
+equipped, askedNow = EquipAll({ BOE, BOUND }, {})
+check("bound gear equips immediately",  #equipped, 1)
+check("bound gear is announced",        equipped[1], BOUND)
+check("and it still asks about the BoE", askedNow, BOE)
+
+-- Accepted: the item is on the character, so the batch moves to the next question.
+local worn = { [11] = 222 }
+equipped, askedNow = EquipAll({ BOE, BOE2 }, worn, { slot = 11, id = 222 })
+check("accepted ask moves on",          askedNow, BOE2)
+
+-- Declined: the slot is untouched. That item leaves the batch — re-firing it is how one
+-- "no" becomes the same popup every two seconds — but the rest of the gear still goes on.
+local dropped
+equipped, askedNow, dropped = EquipAll({ BOE, BOE2, BOUND }, {}, { slot = 11, id = 222 })
+check("declined item is dropped",       dropped[222], true)
+check("declined does not re-ask it",    askedNow, BOE2)
+check("declined still equips the rest", equipped[1], BOUND)
+
+-- An item already worn is never re-fired, whatever the recommendation still says: that
+-- would raise a confirmation for something no longer in the bags and hang the batch.
+equipped, askedNow = EquipAll({ BOUND, BOE }, { [5] = 111, [11] = 222 })
+check("worn bound item not re-equipped", #equipped, 0)
+check("worn BoE not re-asked",           askedNow, nil)
+
 if failures == 0 then
     print("gear checks: all passed")
 else
